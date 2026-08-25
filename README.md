@@ -3,6 +3,7 @@
 > Design System Drift Auditor & Refactor Engine for React codebases. Built natively as a CLI tool and MCP (Model Context Protocol) Server for Cursor & Magic Patterns Agent workflows.
 
 <!-- [![CI Suite](https://github.com/YOUR_GITHUB_USERNAME/mp-token-drift/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/mp-token-drift/actions) -->
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
 
@@ -11,6 +12,7 @@
 ## 💡 The Problem
 
 When product teams move quickly from AI-generated prototypes to production codebases, **design system drift** inevitably occurs:
+
 - Engineers add arbitrary Tailwind utility classes (e.g., `p-[13px]`, `rounded-[7px]`).
 - Hardcoded inline HEX colors bypass design tokens (e.g., `style={{ color: '#1a73e8' }}`).
 - Code reviews slow down while inspecting UI token compliance manually.
@@ -43,3 +45,4 @@ npm install
 
 # Build CLI binary
 npm run build
+```
