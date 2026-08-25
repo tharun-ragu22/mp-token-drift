@@ -26,8 +26,15 @@ const ARBITRARY_CLASS = /\[[^\]]+\]/;
 // Hardcoded color literals: hex (#f00 / #ffffff / #ffffffff), rgb()/rgba(), hsl()/hsla().
 const COLOR_PATTERNS = [/#[0-9a-fA-F]{3,8}\b/, /\brgba?\([^)]*\)/i, /\bhsla?\([^)]*\)/i];
 
-function isHardcodedColor(value: string): boolean {
-  return COLOR_PATTERNS.some((re) => re.test(value));
+// Return the first hardcoded color found in a value, or null. Extracting the
+// match (rather than the whole value) resolves CSS variable fallbacks such as
+// `var(--my-color, #ff0055)` down to the literal color they hide.
+function extractColor(value: string): string | null {
+  for (const pattern of COLOR_PATTERNS) {
+    const match = pattern.exec(value);
+    if (match) return match[0] ?? null;
+  }
+  return null;
 }
 
 function lineOf(node: Node): number {
@@ -69,6 +76,21 @@ function collectClassStrings(node: Node | null | undefined, out: ClassString[]):
       collectClassStrings(node.left, out);
       collectClassStrings(node.right, out);
       break;
+    case 'CallExpression':
+    case 'OptionalCallExpression':
+      // Utility helpers like cn(...) / clsx(...): the class names live in the args.
+      for (const argument of node.arguments) {
+        collectClassStrings(argument, out);
+      }
+      break;
+    case 'ObjectExpression':
+      // clsx object form, e.g. clsx({ 'bg-[#123456]': active }): keys are classes.
+      for (const property of node.properties) {
+        if (property.type === 'ObjectProperty' && property.key.type === 'StringLiteral') {
+          out.push({ text: property.key.value, line: lineOf(property.key) });
+        }
+      }
+      break;
     default:
       break;
   }
@@ -104,8 +126,10 @@ function findHardcodedColors(value: AttributeValue): Finding[] {
   for (const prop of value.expression.properties) {
     if (prop.type !== 'ObjectProperty') continue;
     const propValue = prop.value;
-    if (propValue.type === 'StringLiteral' && isHardcodedColor(propValue.value)) {
-      findings.push({ type: 'hardcoded-color', value: propValue.value, line: lineOf(propValue) });
+    if (propValue.type !== 'StringLiteral') continue;
+    const color = extractColor(propValue.value);
+    if (color) {
+      findings.push({ type: 'hardcoded-color', value: color, line: lineOf(propValue) });
     }
   }
   return findings;
@@ -137,6 +161,14 @@ export function scanSource(code: string): Finding[] {
 }
 
 export function scanFile(filePath: string): Finding[] {
-  const code = readFileSync(filePath, 'utf8');
+  let code: string;
+  try {
+    code = readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    throw error;
+  }
   return scanSource(code);
 }

@@ -49,3 +49,30 @@ describe('astScanner - ComplexCard', () => {
     expect(colors).toContain('#f00');
   });
 });
+
+describe('astScanner - Edge Cases', () => {
+  const findings = scanFile('fixtures/sample-app/EdgeCasesCard.tsx');
+  const arbitraryClasses = findings.filter((f) => f.type === 'arbitrary-class').map((f) => f.value);
+  const colors = findings.filter((f) => f.type === 'hardcoded-color').map((f) => f.value);
+
+  it('flags modern color formats and CSS variable fallbacks as hardcoded colors', () => {
+    expect(colors).toContain('rgba(0, 0, 0, 0.5)');
+    expect(colors).toContain('hsl(210, 100%, 50%)');
+    expect(colors).toContain('#ff0055');
+  });
+
+  it('detects arbitrary classes inside cn() and clsx() utility calls', () => {
+    expect(arbitraryClasses).toContain('p-[12px]');
+    expect(arbitraryClasses).toContain('m-[4px]');
+    expect(arbitraryClasses).toContain('bg-[#123456]');
+  });
+
+  it('parses negative offsets and multi-word arbitrary values', () => {
+    expect(arbitraryClasses).toContain('-top-[12px]');
+    expect(arbitraryClasses).toContain('grid-cols-[1fr_2fr]');
+  });
+
+  it('throws a readable error when the file does not exist', () => {
+    expect(() => scanFile('fixtures/non-existent.tsx')).toThrow(/File not found/);
+  });
+});
