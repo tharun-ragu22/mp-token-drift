@@ -41,6 +41,10 @@ function lineOf(node: Node): number {
   return node.loc?.start.line ?? 0;
 }
 
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
 interface ClassString {
   text: string;
   line: number;
@@ -98,12 +102,10 @@ function collectClassStrings(node: Node | null | undefined, out: ClassString[]):
 
 /** Flag Tailwind arbitrary-value classes (e.g. `p-[13px]`) within a `className`. */
 function findArbitraryClasses(value: AttributeValue): Finding[] {
+  // A className is either a bare string or an expression container; walk whichever.
+  const root = value?.type === 'JSXExpressionContainer' ? value.expression : value;
   const strings: ClassString[] = [];
-  if (value?.type === 'StringLiteral') {
-    collectClassStrings(value, strings);
-  } else if (value?.type === 'JSXExpressionContainer') {
-    collectClassStrings(value.expression, strings);
-  }
+  collectClassStrings(root, strings);
 
   const findings: Finding[] = [];
   for (const { text, line } of strings) {
@@ -165,7 +167,7 @@ export function scanFile(filePath: string): Finding[] {
   try {
     code = readFileSync(filePath, 'utf8');
   } catch (error) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (isErrnoException(error) && error.code === 'ENOENT') {
       throw new Error(`File not found: ${filePath}`);
     }
     throw error;
