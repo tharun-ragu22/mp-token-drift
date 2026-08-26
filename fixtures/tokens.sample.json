@@ -1,0 +1,28 @@
+{
+  "colors": {
+    "brand-primary": "#1a73e8",
+    "brand-secondary": "#188038",
+    "danger": "#d93025",
+    "warning": "#f9ab00",
+    "neutral-900": "#202124",
+    "white": "#ffffff"
+  },
+  "spacing": {
+    "0": "0px",
+    "1": "4px",
+    "2": "8px",
+    "3": "12px",
+    "4": "16px",
+    "5": "20px",
+    "6": "24px",
+    "8": "32px"
+  },
+  "radius": {
+    "none": "0px",
+    "sm": "2px",
+    "md": "8px",
+    "lg": "12px",
+    "xl": "16px",
+    "full": "9999px"
+  }
+}
