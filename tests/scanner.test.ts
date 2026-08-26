@@ -75,4 +75,22 @@ describe('astScanner - Edge Cases', () => {
   it('throws a readable error when the file does not exist', () => {
     expect(() => scanFile('fixtures/non-existent.tsx')).toThrow(/File not found/);
   });
+
+  it('detects OKLCH colors in inline styles and arbitrary classes', () => {
+    expect(colors).toContain('oklch(0.6 0.25 140)');
+    expect(arbitraryClasses).toContain('bg-[oklch(0.7_0.15_200)]');
+  });
+
+  it('captures both branches of a ternary in a style object', () => {
+    expect(colors).toContain('#ff0000');
+    expect(colors).toContain('rgba(0, 0, 0, 0.8)');
+  });
+
+  it('flags colors from an external style object constant', () => {
+    expect(colors).toContain('#e5e7eb');
+  });
+
+  it('ignores findings on lines marked with a drift-ignore directive', () => {
+    expect(colors).not.toContain('#00ff00');
+  });
 });

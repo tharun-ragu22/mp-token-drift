@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { parse } from '@babel/parser';
 import babelTraverse from '@babel/traverse';
-import type { NodePath } from '@babel/traverse';
-import type { JSXAttribute, Node } from '@babel/types';
+import type { NodePath, Scope } from '@babel/traverse';
+import type { JSXAttribute, Node, ObjectExpression } from '@babel/types';
 
 // @babel/traverse ships as CommonJS. Under NodeNext's typing the callable sits
 // on `.default`; some bundlers (e.g. Vitest/esbuild) hand back the function
@@ -23,8 +23,13 @@ type AttributeValue = JSXAttribute['value'];
 // Tailwind arbitrary-value syntax, e.g. `p-[13px]`, `bg-[#f0f0f0]`.
 const ARBITRARY_CLASS = /\[[^\]]+\]/;
 
-// Hardcoded color literals: hex (#f00 / #ffffff / #ffffffff), rgb()/rgba(), hsl()/hsla().
-const COLOR_PATTERNS = [/#[0-9a-fA-F]{3,8}\b/, /\brgba?\([^)]*\)/i, /\bhsla?\([^)]*\)/i];
+// Hardcoded color literals: hex, rgb()/rgba(), hsl()/hsla(), and oklab()/oklch().
+const COLOR_PATTERNS = [
+  /#[0-9a-fA-F]{3,8}\b/,
+  /\brgba?\([^)]*\)/i,
+  /\bhsla?\([^)]*\)/i,
+  /\bokl(?:ab|ch)\([^)]*\)/i,
+];
 
 // Return the first hardcoded color found in a value, or null. Extracting the
 // match (rather than the whole value) resolves CSS variable fallbacks such as
@@ -118,20 +123,58 @@ function findArbitraryClasses(value: AttributeValue): Finding[] {
   return findings;
 }
 
-/** Flag hardcoded color literals in an inline `style={{ ... }}` object. */
-function findHardcodedColors(value: AttributeValue): Finding[] {
-  if (value?.type !== 'JSXExpressionContainer' || value.expression.type !== 'ObjectExpression') {
-    return [];
+/** Collect string literals reachable from a style property value, incl. ternaries. */
+function collectValueStrings(node: Node | null | undefined, out: ClassString[]): void {
+  if (!node) return;
+
+  switch (node.type) {
+    case 'StringLiteral':
+      out.push({ text: node.value, line: lineOf(node) });
+      break;
+    case 'ConditionalExpression':
+      collectValueStrings(node.consequent, out);
+      collectValueStrings(node.alternate, out);
+      break;
+    case 'LogicalExpression':
+      collectValueStrings(node.left, out);
+      collectValueStrings(node.right, out);
+      break;
+    default:
+      break;
   }
+}
+
+/** Resolve a style prop expression to its object literal, following a simple const identifier. */
+function resolveStyleObject(node: Node, scope: Scope): ObjectExpression | null {
+  if (node.type === 'ObjectExpression') return node;
+  if (node.type === 'Identifier') {
+    const binding = scope.getBinding(node.name);
+    if (binding?.path.isVariableDeclarator()) {
+      const init = binding.path.node.init;
+      if (init?.type === 'ObjectExpression') return init;
+    }
+  }
+  return null;
+}
+
+/** Flag hardcoded color literals in an inline `style={{ ... }}` object (or a referenced const). */
+function findHardcodedColors(path: NodePath<JSXAttribute>): Finding[] {
+  const value = path.node.value;
+  if (value?.type !== 'JSXExpressionContainer') return [];
+
+  const object = resolveStyleObject(value.expression, path.scope);
+  if (!object) return [];
 
   const findings: Finding[] = [];
-  for (const prop of value.expression.properties) {
+  for (const prop of object.properties) {
     if (prop.type !== 'ObjectProperty') continue;
-    const propValue = prop.value;
-    if (propValue.type !== 'StringLiteral') continue;
-    const color = extractColor(propValue.value);
-    if (color) {
-      findings.push({ type: 'hardcoded-color', value: color, line: lineOf(propValue) });
+    const strings: ClassString[] = [];
+    collectValueStrings(prop.value, strings);
+    for (const { text, line } of strings) {
+      const color = extractColor(text);
+      if (color) {
+        findings.push({ type: 'hardcoded-color', value: color, line });
+      }
     }
   }
   return findings;
@@ -146,6 +189,7 @@ export function scanSource(code: string): Finding[] {
     sourceType: 'module',
     plugins: ['typescript', 'jsx'],
   });
+  const suppressedLines = collectSuppressedLines(code);
 
   const findings: Finding[] = [];
   traverse(ast, {
@@ -154,12 +198,21 @@ export function scanSource(code: string): Finding[] {
       if (attrName === 'className') {
         findings.push(...findArbitraryClasses(path.node.value));
       } else if (attrName === 'style') {
-        findings.push(...findHardcodedColors(path.node.value));
+        findings.push(...findHardcodedColors(path));
       }
     },
   });
 
-  return findings;
+  return findings.filter((finding) => !suppressedLines.has(finding.line));
+}
+
+/** Line numbers carrying a `drift-ignore` directive; findings on them are suppressed. */
+function collectSuppressedLines(code: string): Set<number> {
+  const suppressed = new Set<number>();
+  code.split('\n').forEach((line, index) => {
+    if (line.includes('drift-ignore')) suppressed.add(index + 1);
+  });
+  return suppressed;
 }
 
 export function scanFile(filePath: string): Finding[] {
