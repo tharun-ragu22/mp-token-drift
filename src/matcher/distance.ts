@@ -20,14 +20,17 @@ export function deltaE(a: LabColor, b: LabColor): number {
   return ciede2000(a, b);
 }
 
+const PIXELS_PER_REM = 16;
+const LENGTH = /^(-?\d*\.?\d+)(px|rem|em)?$/;
+
 /** Convert a CSS length (`12px`, `1.5rem`) to pixels; null if not a length. */
 export function toPixels(value: string): number | null {
-  const match = /^(-?\d*\.?\d+)(px|rem|em)?$/.exec(value.trim());
+  const match = LENGTH.exec(value.trim());
   if (!match?.[1]) return null;
   const magnitude = Number(match[1]);
   if (Number.isNaN(magnitude)) return null;
-  const unit = match[2] ?? 'px';
-  return unit === 'px' ? magnitude : magnitude * 16;
+  // `rem`/`em` are resolved against the 16px root default; `px` passes through.
+  return (match[2] ?? 'px') === 'px' ? magnitude : magnitude * PIXELS_PER_REM;
 }
 
 /** A named point on a numeric scale (e.g. spacing key `3` at 12 pixels). */

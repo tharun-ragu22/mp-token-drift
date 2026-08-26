@@ -35,6 +35,23 @@ const DEFAULT_DIMENSION_THRESHOLD = 4;
 // Tailwind arbitrary-value class, e.g. `p-[13px]`, `rounded-[7px]`, `-mt-[3px]`.
 const ARBITRARY_CLASS = /^(-?[a-z][a-z-]*)-\[(.+)\]$/;
 
+const NO_MATCH: ClassMatch = { matchedToken: null, distance: null };
+
+/** A Tailwind arbitrary-value class split into its utility prefix and bracketed value. */
+interface ArbitraryClass {
+  prefix: string;
+  value: string;
+}
+
+/** Split `bg-[#1a73e9]` into `{ prefix: 'bg', value: '#1a73e9' }`; null if not arbitrary. */
+function parseArbitraryClass(input: string): ArbitraryClass | null {
+  const match = ARBITRARY_CLASS.exec(input);
+  const prefix = match?.[1];
+  const value = match?.[2];
+  if (prefix === undefined || value === undefined) return null;
+  return { prefix, value };
+}
+
 interface ColorToken {
   name: string;
   lab: LabColor;
@@ -101,19 +118,18 @@ export class TokenMatcher {
 
   /** Suggest the standard Tailwind class closest to an arbitrary-value class. */
   matchClass(input: string): ClassMatch {
-    const parsed = ARBITRARY_CLASS.exec(input);
-    const prefix = parsed?.[1];
-    const rawValue = parsed?.[2];
-    if (prefix === undefined || rawValue === undefined) {
-      return { matchedToken: null, distance: null };
-    }
+    const parsed = parseArbitraryClass(input);
+    if (!parsed) return NO_MATCH;
 
-    const target = toPixels(rawValue);
-    if (target === null) {
-      // Not a length — the value may be a color, e.g. `bg-[#1a73e9]`.
-      return this.matchColorClass(prefix, rawValue);
-    }
+    // Route by value type: a length matches a scale, anything else a color.
+    const px = toPixels(parsed.value);
+    return px === null
+      ? this.matchColorClass(parsed.prefix, parsed.value)
+      : this.matchDimensionClass(parsed.prefix, px);
+  }
 
+  /** Suggest the nearest spacing/radius utility, e.g. `p-[13px]` → `p-3`. */
+  private matchDimensionClass(prefix: string, target: number): ClassMatch {
     const scale = prefix.startsWith('rounded') ? this.radius : this.spacing;
     const nearest = nearestScalePoint(target, scale);
     if (!nearest || nearest.distance > this.dimensionThreshold) {
@@ -125,9 +141,7 @@ export class TokenMatcher {
   /** Suggest a prefixed color utility, e.g. `bg-[#1a73e9]` → `bg-brand-primary`. */
   private matchColorClass(prefix: string, rawValue: string): ClassMatch {
     const { matchedToken, deltaE } = this.matchColor(rawValue);
-    if (matchedToken === null) {
-      return { matchedToken: null, distance: null };
-    }
+    if (matchedToken === null) return NO_MATCH;
     return { matchedToken: `${prefix}-${matchedToken}`, distance: deltaE };
   }
 }
