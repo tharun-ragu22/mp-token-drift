@@ -29,6 +29,7 @@
   "license": "ISC",
   "devDependencies": {
     "@types/babel__traverse": "^7.28.0",
+    "@types/culori": "^4.0.1",
     "@types/node": "^26.3.0",
     "eslint": "^10.9.1",
     "prettier": "^3.9.6",
@@ -41,6 +42,7 @@
     "@babel/traverse": "^7.29.8",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
+    "culori": "^4.0.2",
     "zod": "^4.4.3"
   }
 }
