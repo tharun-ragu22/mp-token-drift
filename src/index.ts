@@ -1,20 +1,12 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
-import chalk from 'chalk';
+import { run } from './cli/index.js';
 
-const program = new Command();
+const result = await run(process.argv.slice(2));
 
-program
-  .name('mp-token-drift')
-  .description('Detect design system token drift via AST analysis')
-  .version('1.0.0');
-
-program
-  .command('scan')
-  .description('Scan source files for design token drift')
-  .argument('<path>', 'path to scan')
-  .action((path: string) => {
-    console.log(chalk.cyan(`Scanning ${path} for token drift...`));
-  });
-
-program.parse();
+if (result.stdout) {
+  process.stdout.write(result.stdout.endsWith('\n') ? result.stdout : `${result.stdout}\n`);
+}
+if (result.stderr) {
+  process.stderr.write(result.stderr);
+}
+process.exit(result.exitCode);
