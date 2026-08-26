@@ -1,4 +1,11 @@
-import { differenceCiede2000, parse as parseColor } from 'culori';
+import {
+  deltaE,
+  nearestScalePoint,
+  toPerceptualColor,
+  toPixels,
+  type LabColor,
+  type ScalePoint,
+} from './distance.js';
 import type { TokenSet } from './schema.js';
 
 export interface ColorMatch {
@@ -28,47 +35,61 @@ const DEFAULT_DIMENSION_THRESHOLD = 4;
 // Tailwind arbitrary-value class, e.g. `p-[13px]`, `rounded-[7px]`, `-mt-[3px]`.
 const ARBITRARY_CLASS = /^(-?[a-z][a-z-]*)-\[(.+)\]$/;
 
-const deltaE2000 = differenceCiede2000();
+interface ColorToken {
+  name: string;
+  lab: LabColor;
+}
 
-/** Convert a CSS length (`12px`, `1.5rem`) to pixels; null if not a length. */
-function toPixels(value: string): number | null {
-  const match = /^(-?\d*\.?\d+)(px|rem|em)?$/.exec(value.trim());
-  if (!match?.[1]) return null;
-  const magnitude = Number(match[1]);
-  if (Number.isNaN(magnitude)) return null;
-  const unit = match[2] ?? 'px';
-  return unit === 'px' ? magnitude : magnitude * 16;
+/** Pre-convert a token map's values into the shape the distance helpers expect. */
+function toColorTokens(colors: TokenSet['colors']): ColorToken[] {
+  return Object.entries(colors).flatMap(([name, value]) => {
+    const lab = toPerceptualColor(value);
+    return lab ? [{ name, lab }] : [];
+  });
+}
+
+function toScalePoints(scale: Record<string, string>): ScalePoint[] {
+  return Object.entries(scale).flatMap(([key, value]) => {
+    const px = toPixels(value);
+    return px === null ? [] : [{ key, px }];
+  });
 }
 
 /**
  * Maps drift values (hardcoded colors, arbitrary Tailwind classes) back to the
  * closest design-system token, so callers can suggest a standard replacement.
+ * Token colors and scales are converted once at construction time, so each
+ * match is a cheap distance scan.
  */
 export class TokenMatcher {
   private readonly colorThreshold: number;
   private readonly dimensionThreshold: number;
+  private readonly colorTokens: ColorToken[];
+  private readonly spacing: ScalePoint[];
+  private readonly radius: ScalePoint[];
 
-  constructor(
-    private readonly tokens: TokenSet,
-    options: MatcherOptions = {},
-  ) {
+  constructor(tokens: TokenSet, options: MatcherOptions = {}) {
     this.colorThreshold = options.colorThreshold ?? DEFAULT_COLOR_THRESHOLD;
     this.dimensionThreshold = options.dimensionThreshold ?? DEFAULT_DIMENSION_THRESHOLD;
+    this.colorTokens = toColorTokens(tokens.colors);
+    this.spacing = toScalePoints(tokens.spacing);
+    this.radius = toScalePoints(tokens.radius);
   }
 
   /** Find the perceptually closest color token to a raw color string. */
   matchColor(input: string): ColorMatch {
-    if (!parseColor(input)) {
+    const inputLab = toPerceptualColor(input);
+    if (!inputLab) {
       return { matchedToken: null, deltaE: Infinity };
     }
 
     let best: string | null = null;
     let bestDelta = Infinity;
-    for (const [name, value] of Object.entries(this.tokens.colors)) {
-      const delta = deltaE2000(input, value);
+    for (const token of this.colorTokens) {
+      const delta = deltaE(inputLab, token.lab);
       if (delta < bestDelta) {
         bestDelta = delta;
-        best = name;
+        best = token.name;
       }
     }
 
@@ -92,22 +113,11 @@ export class TokenMatcher {
       return { matchedToken: null, distance: null };
     }
 
-    const scale = prefix.startsWith('rounded') ? this.tokens.radius : this.tokens.spacing;
-    let bestKey: string | null = null;
-    let bestDistance = Infinity;
-    for (const [key, value] of Object.entries(scale)) {
-      const tokenPx = toPixels(value);
-      if (tokenPx === null) continue;
-      const distance = Math.abs(target - tokenPx);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestKey = key;
-      }
+    const scale = prefix.startsWith('rounded') ? this.radius : this.spacing;
+    const nearest = nearestScalePoint(target, scale);
+    if (!nearest || nearest.distance > this.dimensionThreshold) {
+      return { matchedToken: null, distance: nearest?.distance ?? null };
     }
-
-    if (bestKey === null || bestDistance > this.dimensionThreshold) {
-      return { matchedToken: null, distance: bestKey === null ? null : bestDistance };
-    }
-    return { matchedToken: `${prefix}-${bestKey}`, distance: bestDistance };
+    return { matchedToken: `${prefix}-${nearest.key}`, distance: nearest.distance };
   }
 }
