@@ -20,6 +20,11 @@ export interface Finding {
 
 type AttributeValue = JSXAttribute['value'];
 
+interface SourceString {
+  text: string;
+  line: number;
+}
+
 // Tailwind arbitrary-value syntax, e.g. `p-[13px]`, `bg-[#f0f0f0]`.
 const ARBITRARY_CLASS = /\[[^\]]+\]/;
 
@@ -50,18 +55,15 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
-interface ClassString {
-  text: string;
-  line: number;
-}
-
 /**
- * Recursively collect the static string segments that make up a `className`
- * value. Handles plain string literals, template literals (both their static
- * quasis and interpolated expressions), and the conditional/logical
- * expressions commonly used to toggle classes.
+ * Recursively gather static string segments from an expression tree: plain
+ * strings, template literals (static quasis plus interpolations), the
+ * conditional/logical/binary expressions used to toggle values, utility-call
+ * arguments (cn/clsx), and object keys (clsx's object form). Both the class and
+ * color scanners share this collection step and differ only in how they
+ * classify the results.
  */
-function collectClassStrings(node: Node | null | undefined, out: ClassString[]): void {
+function collectStrings(node: Node | null | undefined, out: SourceString[]): void {
   if (!node) return;
 
   switch (node.type) {
@@ -73,23 +75,23 @@ function collectClassStrings(node: Node | null | undefined, out: ClassString[]):
         out.push({ text: quasi.value.cooked ?? quasi.value.raw, line: lineOf(quasi) });
       }
       for (const expression of node.expressions) {
-        collectClassStrings(expression, out);
+        collectStrings(expression, out);
       }
       break;
     case 'ConditionalExpression':
-      collectClassStrings(node.consequent, out);
-      collectClassStrings(node.alternate, out);
+      collectStrings(node.consequent, out);
+      collectStrings(node.alternate, out);
       break;
     case 'LogicalExpression':
     case 'BinaryExpression':
-      collectClassStrings(node.left, out);
-      collectClassStrings(node.right, out);
+      collectStrings(node.left, out);
+      collectStrings(node.right, out);
       break;
     case 'CallExpression':
     case 'OptionalCallExpression':
-      // Utility helpers like cn(...) / clsx(...): the class names live in the args.
+      // Utility helpers like cn(...) / clsx(...): the values live in the args.
       for (const argument of node.arguments) {
-        collectClassStrings(argument, out);
+        collectStrings(argument, out);
       }
       break;
     case 'ObjectExpression':
@@ -109,8 +111,8 @@ function collectClassStrings(node: Node | null | undefined, out: ClassString[]):
 function findArbitraryClasses(value: AttributeValue): Finding[] {
   // A className is either a bare string or an expression container; walk whichever.
   const root = value?.type === 'JSXExpressionContainer' ? value.expression : value;
-  const strings: ClassString[] = [];
-  collectClassStrings(root, strings);
+  const strings: SourceString[] = [];
+  collectStrings(root, strings);
 
   const findings: Finding[] = [];
   for (const { text, line } of strings) {
@@ -121,27 +123,6 @@ function findArbitraryClasses(value: AttributeValue): Finding[] {
     }
   }
   return findings;
-}
-
-/** Collect string literals reachable from a style property value, incl. ternaries. */
-function collectValueStrings(node: Node | null | undefined, out: ClassString[]): void {
-  if (!node) return;
-
-  switch (node.type) {
-    case 'StringLiteral':
-      out.push({ text: node.value, line: lineOf(node) });
-      break;
-    case 'ConditionalExpression':
-      collectValueStrings(node.consequent, out);
-      collectValueStrings(node.alternate, out);
-      break;
-    case 'LogicalExpression':
-      collectValueStrings(node.left, out);
-      collectValueStrings(node.right, out);
-      break;
-    default:
-      break;
-  }
 }
 
 /** Resolve a style prop expression to its object literal, following a simple const identifier. */
@@ -168,8 +149,8 @@ function findHardcodedColors(path: NodePath<JSXAttribute>): Finding[] {
   const findings: Finding[] = [];
   for (const prop of object.properties) {
     if (prop.type !== 'ObjectProperty') continue;
-    const strings: ClassString[] = [];
-    collectValueStrings(prop.value, strings);
+    const strings: SourceString[] = [];
+    collectStrings(prop.value, strings);
     for (const { text, line } of strings) {
       const color = extractColor(text);
       if (color) {
@@ -178,6 +159,15 @@ function findHardcodedColors(path: NodePath<JSXAttribute>): Finding[] {
     }
   }
   return findings;
+}
+
+/** Line numbers carrying a `drift-ignore` directive; findings on them are suppressed. */
+function collectSuppressedLines(code: string): Set<number> {
+  const suppressed = new Set<number>();
+  code.split('\n').forEach((line, index) => {
+    if (line.includes('drift-ignore')) suppressed.add(index + 1);
+  });
+  return suppressed;
 }
 
 /**
@@ -204,15 +194,6 @@ export function scanSource(code: string): Finding[] {
   });
 
   return findings.filter((finding) => !suppressedLines.has(finding.line));
-}
-
-/** Line numbers carrying a `drift-ignore` directive; findings on them are suppressed. */
-function collectSuppressedLines(code: string): Set<number> {
-  const suppressed = new Set<number>();
-  code.split('\n').forEach((line, index) => {
-    if (line.includes('drift-ignore')) suppressed.add(index + 1);
-  });
-  return suppressed;
 }
 
 export function scanFile(filePath: string): Finding[] {
