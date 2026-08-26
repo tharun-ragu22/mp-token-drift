@@ -72,3 +72,37 @@ describe('TokenMatcher - non-pixel dimension units', () => {
     expect(result.matchedToken).toBe('p-5');
   });
 });
+
+describe('TokenMatcher - exact-match color bypass', () => {
+  it('returns brand-primary with Delta-E 0 for an exact token color', () => {
+    const result = matcher.matchColor('#1a73e8');
+    expect(result.matchedToken).toBe('brand-primary');
+    expect(result.deltaE).toBe(0);
+  });
+});
+
+describe('TokenMatcher - negative utility offsets', () => {
+  it('matches negative rem spacing -m-[0.75rem] to -m-3', () => {
+    const result = matcher.matchClass('-m-[0.75rem]');
+    expect(result.matchedToken).toBe('-m-3');
+  });
+
+  it('matches negative pixel offset -top-[13px] to -top-3', () => {
+    const result = matcher.matchClass('-top-[13px]');
+    expect(result.matchedToken).toBe('-top-3');
+  });
+});
+
+describe('TokenMatcher - invalid and non-matching inputs', () => {
+  it('returns null for a standard non-arbitrary class', () => {
+    expect(matcher.matchClass('flex-col').matchedToken).toBeNull();
+  });
+
+  it('returns null for an unparseable color string', () => {
+    expect(matcher.matchColor('not-a-color').matchedToken).toBeNull();
+  });
+
+  it('returns null for an empty arbitrary value', () => {
+    expect(matcher.matchClass('p-[]').matchedToken).toBeNull();
+  });
+});
