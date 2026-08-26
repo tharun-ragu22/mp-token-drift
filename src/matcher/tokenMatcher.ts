@@ -110,7 +110,8 @@ export class TokenMatcher {
 
     const target = toPixels(rawValue);
     if (target === null) {
-      return { matchedToken: null, distance: null };
+      // Not a length — the value may be a color, e.g. `bg-[#1a73e9]`.
+      return this.matchColorClass(prefix, rawValue);
     }
 
     const scale = prefix.startsWith('rounded') ? this.radius : this.spacing;
@@ -119,5 +120,14 @@ export class TokenMatcher {
       return { matchedToken: null, distance: nearest?.distance ?? null };
     }
     return { matchedToken: `${prefix}-${nearest.key}`, distance: nearest.distance };
+  }
+
+  /** Suggest a prefixed color utility, e.g. `bg-[#1a73e9]` → `bg-brand-primary`. */
+  private matchColorClass(prefix: string, rawValue: string): ClassMatch {
+    const { matchedToken, deltaE } = this.matchColor(rawValue);
+    if (matchedToken === null) {
+      return { matchedToken: null, distance: null };
+    }
+    return { matchedToken: `${prefix}-${matchedToken}`, distance: deltaE };
   }
 }

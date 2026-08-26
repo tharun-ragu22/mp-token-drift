@@ -30,3 +30,45 @@ describe('TokenMatcher - dimension class matching', () => {
     expect(result.matchedToken).toBe('rounded-md');
   });
 });
+
+describe('TokenMatcher - color format variations', () => {
+  it('matches short-hand hex #fff to white with Delta-E 0', () => {
+    const result = matcher.matchColor('#fff');
+    expect(result.matchedToken).toBe('white');
+    expect(result.deltaE).toBe(0);
+  });
+
+  it('matches an rgba() literal to brand-primary', () => {
+    const result = matcher.matchColor('rgba(26, 115, 232, 1)');
+    expect(result.matchedToken).toBe('brand-primary');
+  });
+});
+
+describe('TokenMatcher - color utility classes with prefixes', () => {
+  it('suggests bg-brand-primary for bg-[#1a73e9]', () => {
+    const result = matcher.matchClass('bg-[#1a73e9]');
+    expect(result.matchedToken).toBe('bg-brand-primary');
+  });
+
+  it('suggests text-brand-secondary for text-[#188039]', () => {
+    const result = matcher.matchClass('text-[#188039]');
+    expect(result.matchedToken).toBe('text-brand-secondary');
+  });
+
+  it('suggests border-danger for border-[#d93026]', () => {
+    const result = matcher.matchClass('border-[#d93026]');
+    expect(result.matchedToken).toBe('border-danger');
+  });
+});
+
+describe('TokenMatcher - non-pixel dimension units', () => {
+  it('converts 0.75rem (12px) and matches p-3', () => {
+    const result = matcher.matchClass('p-[0.75rem]');
+    expect(result.matchedToken).toBe('p-3');
+  });
+
+  it('converts 1.25rem (20px) and matches p-5', () => {
+    const result = matcher.matchClass('p-[1.25rem]');
+    expect(result.matchedToken).toBe('p-5');
+  });
+});
