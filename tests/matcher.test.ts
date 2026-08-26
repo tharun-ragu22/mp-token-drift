@@ -105,4 +105,14 @@ describe('TokenMatcher - invalid and non-matching inputs', () => {
   it('returns null for an empty arbitrary value', () => {
     expect(matcher.matchClass('p-[]').matchedToken).toBeNull();
   });
+
+  it('returns null when a valid dimension class is beyond the pixel threshold', () => {
+    // 100px is far from every spacing token (max 32px), so nothing is close enough.
+    expect(matcher.matchClass('p-[100px]').matchedToken).toBeNull();
+  });
+
+  it('returns null when a valid color class is beyond the Delta-E threshold', () => {
+    // No token is perceptually near magenta, so the prefixed suggestion is null.
+    expect(matcher.matchClass('bg-[#ff00ff]').matchedToken).toBeNull();
+  });
 });
