@@ -1,19 +1,9 @@
-import { Chalk } from 'chalk';
+import { createChalk } from './colors.js';
 import type { DriftItem } from './types.js';
-
-/**
- * Decide whether to emit ANSI colors. Colors are on by default but disabled in
- * CI or when NO_COLOR is set, so piped/CI logs stay clean and machine-readable.
- */
-function colorsDisabled(): boolean {
-  if (process.env.NO_COLOR !== undefined) return true;
-  const ci = process.env.CI;
-  return ci !== undefined && ci !== '' && ci !== 'false' && ci !== '0';
-}
 
 /** Render findings as a human-readable, optionally colorized console report. */
 export function formatConsole(items: DriftItem[]): string {
-  const c = new Chalk({ level: colorsDisabled() ? 0 : 1 });
+  const c = createChalk();
 
   if (items.length === 0) {
     return c.green('✔ No token drift detected.');

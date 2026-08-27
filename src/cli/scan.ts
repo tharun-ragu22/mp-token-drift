@@ -1,11 +1,10 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { glob } from 'glob';
 import { loadConfig, type ResolvedConfig } from '../config/loadConfig.js';
 import { loadTokens } from '../matcher/schema.js';
 import { TokenMatcher } from '../matcher/tokenMatcher.js';
 import { scanFile, type Finding } from '../scanner/astScanner.js';
 import { render } from '../reporter/index.js';
+import { writeReport } from '../reporter/fileWriter.js';
 import type { DriftItem } from '../reporter/types.js';
 import { CliError } from './CliError.js';
 import type { ScanCliOptions } from './program.js';
@@ -14,12 +13,6 @@ export interface ScanOutcome {
   stdout: string;
   stderr: string;
   exitCode: number;
-}
-
-/** Write a report to disk, creating parent directories as needed. */
-function writeReport(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content.endsWith('\n') ? content : `${content}\n`);
 }
 
 /** Look up the closest design-system token to suggest for a finding. */
