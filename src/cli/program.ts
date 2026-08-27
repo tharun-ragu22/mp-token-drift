@@ -1,5 +1,8 @@
-import { Command, InvalidArgumentError, Option } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import type { OutputFormat } from '../reporter/types.js';
+import { CliError } from './CliError.js';
+
+const VALID_FORMATS: readonly OutputFormat[] = ['console', 'pretty', 'json', 'sarif'];
 
 /** Parsed options for the `scan` command. */
 export interface ScanCliOptions {
@@ -27,6 +30,14 @@ function parseMaxDrift(value: string): number {
   return parsed;
 }
 
+/** Validate --format, exiting with code 2 (a config error) on an unknown value. */
+function parseFormat(value: string): OutputFormat {
+  if ((VALID_FORMATS as readonly string[]).includes(value)) {
+    return value as OutputFormat;
+  }
+  throw new CliError(2, `Invalid --format "${value}". Choose one of: ${VALID_FORMATS.join(', ')}.`);
+}
+
 /**
  * Construct the commander program, delegating the actual scan to `onScan`.
  * The program uses `exitOverride` so the caller controls process termination.
@@ -45,14 +56,7 @@ export function buildProgram(onScan: ScanHandler): Command {
     .argument('[patterns...]', 'files or globs to scan')
     .option('-t, --tokens <path>', 'path to the design tokens file')
     .option('-c, --config <path>', 'path to drift.config.json')
-    .addOption(
-      new Option('-f, --format <format>', 'output format').choices([
-        'console',
-        'pretty',
-        'json',
-        'sarif',
-      ]),
-    )
+    .option('-f, --format <format>', 'output format (console|pretty|json|sarif)', parseFormat)
     .option('-o, --out <path>', 'write the report to a file instead of stdout')
     .option('-i, --ignore <glob>', 'glob to exclude (repeatable)', collect, [])
     .option('--fail-on-drift', 'exit non-zero when drift exceeds the threshold')

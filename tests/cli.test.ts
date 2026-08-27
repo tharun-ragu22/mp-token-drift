@@ -6,6 +6,7 @@ const SAMPLE = 'fixtures/sample-app';
 const TOKENS = 'fixtures/tokens.sample.json';
 const BAD_CARD = `${SAMPLE}/BadCard.tsx`;
 const CLEAN_CARD = `${SAMPLE}/CleanCard.tsx`;
+const SUPPRESSED = `${SAMPLE}/Suppressed.tsx`;
 
 const ANSI = /\u001b\[[0-9;]*m/;
 
@@ -250,5 +251,59 @@ describe('CLI - CI color stripping', () => {
     } finally {
       restoreEnv(saved);
     }
+  });
+});
+
+describe('CLI - inline suppression directives', () => {
+  it('skips findings preceded by a drift-ignore or drift-disable comment', async () => {
+    const res = await run(['scan', SUPPRESSED, '--tokens', TOKENS, '--format', 'json']);
+    expect(res.exitCode).toBe(0);
+
+    const values = (JSON.parse(res.stdout) as { findings: { value: string }[] }).findings.map(
+      (f) => f.value,
+    );
+    expect(values).not.toContain('#123456'); // preceding // drift-ignore
+    expect(values).not.toContain('p-[99px]'); // preceding /* drift-disable */
+    expect(values).toContain('#654321'); // no directive → still reported
+  });
+});
+
+describe('CLI - malformed config', () => {
+  it('exits 2 with a readable error when the config file is invalid JSON', async () => {
+    const badPath = 'tmp-bad.config.json';
+    writeFileSync(badPath, '{ "tokens": "x", }'); // trailing comma → invalid JSON
+    try {
+      const res = await run(['scan', BAD_CARD, '--config', badPath]);
+      expect(res.exitCode).toBe(2);
+      expect(res.stderr).toMatch(/config|json/i);
+    } finally {
+      rmSync(badPath, { force: true });
+    }
+  });
+});
+
+describe('CLI - unmatched glob patterns', () => {
+  it('exits 0 with zero findings when the glob matches nothing', async () => {
+    const res = await run([
+      'scan',
+      'non-existent-folder/**/*.tsx',
+      '--tokens',
+      TOKENS,
+      '--format',
+      'json',
+    ]);
+    expect(res.exitCode).toBe(0);
+
+    const report = JSON.parse(res.stdout) as { findings: unknown[]; summary: { total: number } };
+    expect(report.findings).toEqual([]);
+    expect(report.summary.total).toBe(0);
+  });
+});
+
+describe('CLI - invalid parameters', () => {
+  it('exits 2 for an unsupported --format value', async () => {
+    const res = await run(['scan', BAD_CARD, '--tokens', TOKENS, '--format', 'invalid_format']);
+    expect(res.exitCode).toBe(2);
+    expect(res.stderr).toMatch(/format/i);
   });
 });
