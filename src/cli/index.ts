@@ -20,9 +20,10 @@ export async function run(argv: string[]): Promise<CliResult> {
   let exitCode = 0;
 
   const program = buildProgram(async (patterns, options) => {
-    const { text, exitCode: scanExit } = await runScan(patterns, options);
-    out.push(text);
-    exitCode = scanExit;
+    const outcome = await runScan(patterns, options);
+    out.push(outcome.stdout);
+    if (outcome.stderr) err.push(outcome.stderr);
+    exitCode = outcome.exitCode;
   });
   program.configureOutput({
     writeOut: (str) => out.push(str),

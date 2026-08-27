@@ -10,7 +10,8 @@ const configFileSchema = z
     tokens: z.string().optional(),
     include: z.array(z.string()).optional(),
     ignore: z.array(z.string()).optional(),
-    format: z.enum(['console', 'json', 'sarif']).optional(),
+    format: z.enum(['console', 'pretty', 'json', 'sarif']).optional(),
+    out: z.string().optional(),
     failOnDrift: z.boolean().optional(),
     maxDrift: z.number().int().nonnegative().optional(),
   })
@@ -25,6 +26,7 @@ export interface CliOverrides {
   patterns?: string[];
   ignore?: string[];
   format?: OutputFormat;
+  out?: string;
   failOnDrift?: boolean;
   maxDrift?: number;
 }
@@ -35,6 +37,8 @@ export interface ResolvedConfig {
   include: string[];
   ignore: string[];
   format: OutputFormat;
+  /** When set, the report is written to this file instead of stdout. */
+  out?: string;
   failOnDrift: boolean;
   maxDrift: number;
 }
@@ -99,6 +103,7 @@ export function loadConfig(overrides: CliOverrides): ResolvedConfig {
     include: patterns.length > 0 ? patterns : (file.include ?? DEFAULTS.include),
     ignore: [...(file.ignore ?? []), ...(overrides.ignore ?? [])],
     format: overrides.format ?? file.format ?? DEFAULTS.format,
+    out: overrides.out ?? file.out,
     failOnDrift: overrides.failOnDrift ?? file.failOnDrift ?? DEFAULTS.failOnDrift,
     maxDrift: overrides.maxDrift ?? file.maxDrift ?? DEFAULTS.maxDrift,
   };

@@ -11,6 +11,7 @@ export function render(items: DriftItem[], format: OutputFormat): string {
     case 'sarif':
       return formatSarif(items);
     case 'console':
+    case 'pretty':
       return formatConsole(items);
   }
 }

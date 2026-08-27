@@ -6,6 +6,7 @@ export interface ScanCliOptions {
   tokens?: string;
   config?: string;
   format?: OutputFormat;
+  out?: string;
   ignore?: string[];
   failOnDrift?: boolean;
   maxDrift?: number;
@@ -45,8 +46,14 @@ export function buildProgram(onScan: ScanHandler): Command {
     .option('-t, --tokens <path>', 'path to the design tokens file')
     .option('-c, --config <path>', 'path to drift.config.json')
     .addOption(
-      new Option('-f, --format <format>', 'output format').choices(['console', 'json', 'sarif']),
+      new Option('-f, --format <format>', 'output format').choices([
+        'console',
+        'pretty',
+        'json',
+        'sarif',
+      ]),
     )
+    .option('-o, --out <path>', 'write the report to a file instead of stdout')
     .option('-i, --ignore <glob>', 'glob to exclude (repeatable)', collect, [])
     .option('--fail-on-drift', 'exit non-zero when drift exceeds the threshold')
     .option('--max-drift <n>', 'maximum allowed drift findings', parseMaxDrift)

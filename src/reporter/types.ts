@@ -10,4 +10,4 @@ export interface DriftItem {
   suggestion: string | null;
 }
 
-export type OutputFormat = 'console' | 'json' | 'sarif';
+export type OutputFormat = 'console' | 'pretty' | 'json' | 'sarif';

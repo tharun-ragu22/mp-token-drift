@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { glob } from 'glob';
 import { loadConfig, type ResolvedConfig } from '../config/loadConfig.js';
 import { loadTokens } from '../matcher/schema.js';
@@ -9,8 +11,15 @@ import { CliError } from './CliError.js';
 import type { ScanCliOptions } from './program.js';
 
 export interface ScanOutcome {
-  text: string;
+  stdout: string;
+  stderr: string;
   exitCode: number;
+}
+
+/** Write a report to disk, creating parent directories as needed. */
+function writeReport(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content.endsWith('\n') ? content : `${content}\n`);
 }
 
 /** Look up the closest design-system token to suggest for a finding. */
@@ -61,6 +70,7 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
     patterns,
     ignore: options.ignore,
     format: options.format,
+    out: options.out,
     failOnDrift: options.failOnDrift,
     maxDrift: options.maxDrift,
   });
@@ -69,6 +79,12 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
   const files = await resolveFiles(config);
   const items = collectDrift(files, matcher);
 
-  const exceededThreshold = config.failOnDrift && items.length > config.maxDrift;
-  return { text: render(items, config.format), exitCode: exceededThreshold ? 1 : 0 };
+  const report = render(items, config.format);
+  const exitCode = config.failOnDrift && items.length > config.maxDrift ? 1 : 0;
+
+  if (config.out) {
+    writeReport(config.out, report);
+    return { stdout: '', stderr: `Report written to ${config.out}\n`, exitCode };
+  }
+  return { stdout: report, stderr: '', exitCode };
 }
