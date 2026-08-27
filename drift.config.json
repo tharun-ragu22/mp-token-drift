@@ -1,0 +1,6 @@
+{
+  "tokens": "fixtures/tokens.sample.json",
+  "include": ["fixtures/**/*.tsx"],
+  "ignore": ["**/node_modules/**", "**/dist/**"],
+  "maxDrift": 0
+}
