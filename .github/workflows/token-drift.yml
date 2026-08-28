@@ -32,13 +32,10 @@ jobs:
       - name: Build CLI
         run: npm run build
 
-      # `scan:ci` writes drift-report.sarif and exits non-zero when drift exceeds
-      # the budget. `continue-on-error` lets the report upload regardless so the
-      # findings still surface as code-scanning alerts. Remove it to turn drift
-      # into a hard build failure that blocks the PR.
-      - name: Scan for token drift
-        run: npm run scan:ci
-        continue-on-error: true
+      # Generate the SARIF report. `scan:sarif` never fails the build; findings
+      # surface as code-scanning alerts after upload.
+      - name: Generate drift report (SARIF)
+        run: npm run scan:sarif
 
       - name: Upload SARIF to code scanning
         if: always()
@@ -46,3 +43,8 @@ jobs:
         with:
           sarif_file: drift-report.sarif
           category: mp-token-drift
+
+      # Optional hard gate — uncomment to fail PRs that introduce drift beyond
+      # the `maxDrift` budget in drift.config.json:
+      # - name: Enforce drift budget
+      #   run: npm run scan:ci

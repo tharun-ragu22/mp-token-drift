@@ -23,6 +23,7 @@
     "start": "node dist/index.js",
     "scan": "node dist/index.js scan",
     "scan:json": "node dist/index.js scan --format json",
+    "scan:sarif": "node dist/index.js scan --format sarif --out drift-report.sarif",
     "scan:ci": "node dist/index.js scan --format sarif --fail-on-drift --out drift-report.sarif",
     "test": "vitest run",
     "test:watch": "vitest",

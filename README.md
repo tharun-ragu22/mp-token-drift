@@ -152,14 +152,15 @@ Add a `drift-ignore` or `drift-disable` comment inline or on the line directly a
 
 ## 📦 npm scripts
 
-| Script                                  | Command                                               |
-| --------------------------------------- | ----------------------------------------------------- |
-| `npm run scan`                          | `scan` with the console reporter                      |
-| `npm run scan:json`                     | `scan --format json`                                  |
-| `npm run scan:ci`                       | SARIF to `drift-report.sarif`, non-zero exit on drift |
-| `npm run build`                         | Compile `src/` → `dist/`                              |
-| `npm test`                              | Run the Vitest suite                                  |
-| `npm run typecheck` / `lint` / `format` | Static checks                                         |
+| Script                                  | Command                                       |
+| --------------------------------------- | --------------------------------------------- |
+| `npm run scan`                          | `scan` with the console reporter              |
+| `npm run scan:json`                     | `scan --format json`                          |
+| `npm run scan:sarif`                    | SARIF to `drift-report.sarif` (never fails)   |
+| `npm run scan:ci`                       | Same, but exits non-zero on drift (hard gate) |
+| `npm run build`                         | Compile `src/` → `dist/`                      |
+| `npm test`                              | Run the Vitest suite                          |
+| `npm run typecheck` / `lint` / `format` | Static checks                                 |
 
 > All `scan` scripts run the compiled binary, so run `npm run build` first (or after code changes).
 
@@ -183,22 +184,23 @@ jobs:
         with: { node-version: '22.x', cache: npm }
       - run: npm ci
       - run: npm run build
-      - name: Scan for token drift
-        run: npm run scan:ci # writes drift-report.sarif
-        continue-on-error: true # remove to make drift a hard build failure
+      - name: Generate drift report (SARIF)
+        run: npm run scan:sarif # writes drift-report.sarif, never fails
       - name: Upload SARIF to code scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: drift-report.sarif
           category: mp-token-drift
+      # Optional hard gate — uncomment to fail PRs that introduce drift:
+      # - name: Enforce drift budget
+      #   run: npm run scan:ci
 ```
 
 Notes:
 
-- **`continue-on-error: true`** uploads findings as alerts without failing the job. Drop it to block PRs that add drift (combine with `maxDrift` in your config for a budget).
+- **Report generation vs. gating are separate.** `scan:sarif` only writes the report (exit 0), so findings surface as alerts without a scary failed step. Add the `scan:ci` step to hard-fail PRs that exceed the `maxDrift` budget in your config.
 - Uploading requires the **`security-events: write`** permission; on public repos code scanning is free, private repos need GitHub Advanced Security. PRs from forks get a read-only token and can't upload.
-- Prefer a hard gate without the Security tab? Just run `npm run scan:ci` (it already exits non-zero on drift).
 
 ---
 
