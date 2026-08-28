@@ -152,16 +152,53 @@ Add a `drift-ignore` or `drift-disable` comment inline or on the line directly a
 
 ## 📦 npm scripts
 
-| Script                                  | Command                               |
-| --------------------------------------- | ------------------------------------- |
-| `npm run scan`                          | `scan` with the console reporter      |
-| `npm run scan:json`                     | `scan --format json`                  |
-| `npm run scan:ci`                       | `scan --format sarif --fail-on-drift` |
-| `npm run build`                         | Compile `src/` → `dist/`              |
-| `npm test`                              | Run the Vitest suite                  |
-| `npm run typecheck` / `lint` / `format` | Static checks                         |
+| Script                                  | Command                                               |
+| --------------------------------------- | ----------------------------------------------------- |
+| `npm run scan`                          | `scan` with the console reporter                      |
+| `npm run scan:json`                     | `scan --format json`                                  |
+| `npm run scan:ci`                       | SARIF to `drift-report.sarif`, non-zero exit on drift |
+| `npm run build`                         | Compile `src/` → `dist/`                              |
+| `npm test`                              | Run the Vitest suite                                  |
+| `npm run typecheck` / `lint` / `format` | Static checks                                         |
 
 > All `scan` scripts run the compiled binary, so run `npm run build` first (or after code changes).
+
+---
+
+## 🤖 Continuous Integration
+
+The tool emits [SARIF v2.1.0](https://sarifweb.azurewebsites.net/), so findings can show up in the GitHub **Security → Code scanning** tab. A ready-to-use workflow ships in [`.github/workflows/token-drift.yml`](.github/workflows/token-drift.yml):
+
+```yaml
+permissions:
+  contents: read
+  security-events: write # required to upload SARIF
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.x', cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - name: Scan for token drift
+        run: npm run scan:ci # writes drift-report.sarif
+        continue-on-error: true # remove to make drift a hard build failure
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: drift-report.sarif
+          category: mp-token-drift
+```
+
+Notes:
+
+- **`continue-on-error: true`** uploads findings as alerts without failing the job. Drop it to block PRs that add drift (combine with `maxDrift` in your config for a budget).
+- Uploading requires the **`security-events: write`** permission; on public repos code scanning is free, private repos need GitHub Advanced Security. PRs from forks get a read-only token and can't upload.
+- Prefer a hard gate without the Security tab? Just run `npm run scan:ci` (it already exits non-zero on drift).
 
 ---
 
