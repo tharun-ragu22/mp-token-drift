@@ -43,7 +43,8 @@ const PROVIDERS: Record<LlmProvider, ProviderConfig> = {
   },
 };
 
-const DEFAULT_PROVIDER: LlmProvider = 'anthropic';
+/** Provider used when none is specified via CLI, config, or environment. */
+export const DEFAULT_LLM_PROVIDER: LlmProvider = 'anthropic';
 
 function isSupported(provider: string): provider is LlmProvider {
   return Object.prototype.hasOwnProperty.call(PROVIDERS, provider);
@@ -82,6 +83,6 @@ export function resolveModel(provider: string, modelId?: string): ResolvedModel 
  * falling back to the default provider and that provider's default model.
  */
 export function resolveModelFromEnv(): ResolvedModel {
-  const provider = process.env.LLM_PROVIDER ?? DEFAULT_PROVIDER;
+  const provider = process.env.LLM_PROVIDER ?? DEFAULT_LLM_PROVIDER;
   return resolveModel(provider, process.env.LLM_MODEL);
 }

@@ -70,6 +70,8 @@ const DEFAULTS: ResolvedConfig = {
   format: 'console',
   failOnDrift: false,
   maxDrift: 0,
+  // Kept as a literal (not imported from the agent) so the scan hot path never
+  // eagerly loads the AI SDK when AI is disabled.
   ai: { enabled: false, provider: 'anthropic' },
 };
 

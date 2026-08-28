@@ -1,7 +1,7 @@
 import { generateObject, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { FindingType } from '../scanner/astScanner.js';
-import { resolveModel, type ResolvedModel } from './modelFactory.js';
+import { DEFAULT_LLM_PROVIDER, resolveModel, type ResolvedModel } from './modelFactory.js';
 
 /** The structured object the reasoning agent must produce. */
 export const driftExplanationSchema = z.object({
@@ -54,8 +54,6 @@ export interface ExplainDriftDeps {
   resolve?: (provider: string, modelId?: string) => ResolvedModel;
   generate?: AiGenerateFn;
 }
-
-const DEFAULT_PROVIDER = 'anthropic';
 
 const defaultGenerate: AiGenerateFn = async ({ model, schema, prompt }) => {
   const result = await generateObject({ model, schema, prompt });
@@ -116,7 +114,7 @@ export async function explainDrift(
   const resolve = deps.resolve ?? resolveModel;
   const generate = deps.generate ?? defaultGenerate;
 
-  const { model } = resolve(options.provider ?? DEFAULT_PROVIDER, options.model);
+  const { model } = resolve(options.provider ?? DEFAULT_LLM_PROVIDER, options.model);
   const { object } = await generate({
     model,
     schema: driftExplanationSchema,
