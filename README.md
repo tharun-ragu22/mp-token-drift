@@ -168,7 +168,12 @@ Add a `drift-ignore` or `drift-disable` comment inline or on the line directly a
 
 ## 🤖 Continuous Integration
 
-The tool emits [SARIF v2.1.0](https://sarifweb.azurewebsites.net/), so findings can show up in the GitHub **Security → Code scanning** tab. A ready-to-use workflow ships in [`.github/workflows/token-drift.yml`](.github/workflows/token-drift.yml):
+The tool emits [SARIF v2.1.0](https://sarifweb.azurewebsites.net/), so findings can show up in the GitHub **Security → Code scanning** tab if you wire it into a workflow. Two building blocks make this easy:
+
+- `npm run scan:sarif` — writes `drift-report.sarif` and **always exits 0** (report generation only).
+- `npm run scan:ci` — same, but **exits non-zero** when drift exceeds the `maxDrift` budget, so it can hard-fail a PR.
+
+A minimal integration generates the SARIF, uploads it, and (optionally) gates:
 
 ```yaml
 permissions:
@@ -197,10 +202,7 @@ jobs:
       #   run: npm run scan:ci
 ```
 
-Notes:
-
-- **Report generation vs. gating are separate.** `scan:sarif` only writes the report (exit 0), so findings surface as alerts without a scary failed step. Add the `scan:ci` step to hard-fail PRs that exceed the `maxDrift` budget in your config.
-- Uploading requires the **`security-events: write`** permission; on public repos code scanning is free, private repos need GitHub Advanced Security. PRs from forks get a read-only token and can't upload.
+Point your config's `include` globs at the components you actually want audited (this repo ships no such workflow — its only `.tsx` are the intentional-drift fixtures used by the test suite). Uploading requires the **`security-events: write`** permission; on public repos code scanning is free, private repos need GitHub Advanced Security, and PRs from forks get a read-only token and can't upload.
 
 ---
 
