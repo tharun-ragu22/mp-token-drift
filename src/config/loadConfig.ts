@@ -5,6 +5,14 @@ import type { OutputFormat } from '../reporter/types.js';
 
 const DEFAULT_CONFIG_PATH = 'drift.config.json';
 
+const aiConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    provider: z.string().optional(),
+    model: z.string().optional(),
+  })
+  .strict();
+
 const configFileSchema = z
   .object({
     tokens: z.string().optional(),
@@ -14,10 +22,18 @@ const configFileSchema = z
     out: z.string().optional(),
     failOnDrift: z.boolean().optional(),
     maxDrift: z.number().int().nonnegative().optional(),
+    ai: aiConfigSchema.optional(),
   })
   .strict();
 
 type FileConfig = z.infer<typeof configFileSchema>;
+
+/** Optional LLM reasoning-agent configuration. */
+export interface ResolvedAiConfig {
+  enabled: boolean;
+  provider: string;
+  model?: string;
+}
 
 /** Options passed from the command line; each overrides the config file. */
 export interface CliOverrides {
@@ -29,6 +45,9 @@ export interface CliOverrides {
   out?: string;
   failOnDrift?: boolean;
   maxDrift?: number;
+  enableAi?: boolean;
+  llmProvider?: string;
+  llmModel?: string;
 }
 
 /** Fully-resolved configuration after merging defaults, file, and CLI options. */
@@ -41,6 +60,7 @@ export interface ResolvedConfig {
   out?: string;
   failOnDrift: boolean;
   maxDrift: number;
+  ai: ResolvedAiConfig;
 }
 
 const DEFAULTS: ResolvedConfig = {
@@ -50,6 +70,7 @@ const DEFAULTS: ResolvedConfig = {
   format: 'console',
   failOnDrift: false,
   maxDrift: 0,
+  ai: { enabled: false, provider: 'anthropic' },
 };
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
@@ -106,5 +127,10 @@ export function loadConfig(overrides: CliOverrides): ResolvedConfig {
     out: overrides.out ?? file.out,
     failOnDrift: overrides.failOnDrift ?? file.failOnDrift ?? DEFAULTS.failOnDrift,
     maxDrift: overrides.maxDrift ?? file.maxDrift ?? DEFAULTS.maxDrift,
+    ai: {
+      enabled: overrides.enableAi ?? file.ai?.enabled ?? DEFAULTS.ai.enabled,
+      provider: overrides.llmProvider ?? file.ai?.provider ?? DEFAULTS.ai.provider,
+      model: overrides.llmModel ?? file.ai?.model,
+    },
   };
 }

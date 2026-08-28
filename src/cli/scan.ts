@@ -66,6 +66,9 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
     out: options.out,
     failOnDrift: options.failOnDrift,
     maxDrift: options.maxDrift,
+    enableAi: options.enableAi,
+    llmProvider: options.llmProvider,
+    llmModel: options.llmModel,
   });
 
   const matcher = loadMatcher(config.tokens);

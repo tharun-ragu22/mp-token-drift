@@ -27,6 +27,7 @@
     "scan:ci": "node dist/index.js scan --format sarif --fail-on-drift --out drift-report.sarif",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval": "vitest run tests/evals/agentEval.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -46,12 +47,16 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.114",
+    "@ai-sdk/google": "^3.0.118",
+    "@ai-sdk/openai": "^3.0.104",
     "@babel/parser": "^7.29.8",
     "@babel/traverse": "^7.29.8",
+    "ai": "^6.0.271",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "culori": "^4.0.2",
     "glob": "^13.0.6",
-    "zod": "^4.4.3"
+    "zod": "^4.5.1"
   }
 }
