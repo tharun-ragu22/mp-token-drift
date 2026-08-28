@@ -12,7 +12,14 @@ export type LabColor = Lab;
  * Returns null for strings culori cannot recognize as colors.
  */
 export function toPerceptualColor(color: string): LabColor | null {
-  return toLab(color) ?? null;
+  // culori usually returns undefined for unrecognized input, but can throw on
+  // malformed modern-syntax strings (e.g. Tailwind's `oklch(0.7_0.15_200)` with
+  // underscores). Treat any parse failure as "not a color".
+  try {
+    return toLab(color) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** CIEDE2000 perceptual distance between two already-converted Lab colors. */

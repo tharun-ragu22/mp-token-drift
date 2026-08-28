@@ -161,11 +161,21 @@ function findHardcodedColors(path: NodePath<JSXAttribute>): Finding[] {
   return findings;
 }
 
-/** Line numbers carrying a `drift-ignore` directive; findings on them are suppressed. */
+// A suppression directive: `drift-ignore` or `drift-disable`, in a line or block comment.
+const SUPPRESS_DIRECTIVE = /drift-(?:ignore|disable)/;
+
+/**
+ * Line numbers whose findings should be suppressed. A directive suppresses both
+ * its own line (inline, e.g. `color: '#fff', // drift-ignore`) and the line that
+ * follows it (a comment placed on the line preceding the finding).
+ */
 function collectSuppressedLines(code: string): Set<number> {
   const suppressed = new Set<number>();
   code.split('\n').forEach((line, index) => {
-    if (line.includes('drift-ignore')) suppressed.add(index + 1);
+    if (SUPPRESS_DIRECTIVE.test(line)) {
+      suppressed.add(index + 1); // the directive's own line
+      suppressed.add(index + 2); // and the finding on the following line
+    }
   });
   return suppressed;
 }

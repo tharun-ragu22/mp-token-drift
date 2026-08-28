@@ -7,6 +7,9 @@
   "bin": {
     "mp-token-drift": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -15,8 +18,13 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
+    "scan": "node dist/index.js scan",
+    "scan:json": "node dist/index.js scan --format json",
+    "scan:sarif": "node dist/index.js scan --format sarif --out drift-report.sarif",
+    "scan:ci": "node dist/index.js scan --format sarif --fail-on-drift --out drift-report.sarif",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -43,6 +51,7 @@
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "culori": "^4.0.2",
+    "glob": "^13.0.6",
     "zod": "^4.4.3"
   }
 }
