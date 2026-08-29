@@ -13,7 +13,14 @@ export function formatConsole(items: DriftItem[]): string {
     const location = c.dim(`${item.file}:${item.line}`);
     const value = c.red(item.value);
     const suggestion = item.suggestion ? c.green(` → ${item.suggestion}`) : '';
-    return `${location}  ${c.yellow(item.type)}  ${value}${suggestion}`;
+    const finding = `${location}  ${c.yellow(item.type)}  ${value}${suggestion}`;
+
+    if (item.explanation) {
+      const confidence =
+        item.confidence !== undefined ? ` (${Math.round(item.confidence * 100)}% confidence)` : '';
+      return `${finding}\n${c.cyan(`    ↳ ${item.explanation}${confidence}`)}`;
+    }
+    return finding;
   });
 
   const summary = c.bold(`\n${items.length} drift issue(s) found.`);

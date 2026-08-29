@@ -8,6 +8,10 @@ export interface DriftItem {
   value: string;
   /** The nearest design-system token, or null when none is close enough. */
   suggestion: string | null;
+  /** Optional LLM rationale, populated only when the AI agent is enabled. */
+  explanation?: string;
+  /** The LLM's confidence in its suggestion, 0..1, when an explanation exists. */
+  confidence?: number;
 }
 
 export type OutputFormat = 'console' | 'pretty' | 'json' | 'sarif';
