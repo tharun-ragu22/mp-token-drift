@@ -80,15 +80,18 @@ mp-token-drift scan [options] [patterns...]
 
 `patterns` are files or globs (quote them so your shell doesn't pre-expand). If omitted, the `include` globs from your config are used.
 
-| Option                | Description                                                | Default     |
-| --------------------- | ---------------------------------------------------------- | ----------- |
-| `-t, --tokens <path>` | Design-tokens file to match against                        | from config |
-| `-c, --config <path>` | Explicit `drift.config.json` (else auto-discovered in cwd) | —           |
-| `-f, --format <fmt>`  | `console`, `pretty`, `json`, or `sarif`                    | `console`   |
-| `-o, --out <path>`    | Write the report to a file instead of stdout               | stdout      |
-| `-i, --ignore <glob>` | Glob to exclude (repeatable)                               | —           |
-| `--fail-on-drift`     | Exit non-zero when findings exceed `--max-drift`           | off         |
-| `--max-drift <n>`     | Allowed findings before failing                            | `0`         |
+| Option                | Description                                                | Default      |
+| --------------------- | ---------------------------------------------------------- | ------------ |
+| `-t, --tokens <path>` | Design-tokens file to match against                        | from config  |
+| `-c, --config <path>` | Explicit `drift.config.json` (else auto-discovered in cwd) | —            |
+| `-f, --format <fmt>`  | `console`, `pretty`, `json`, or `sarif`                    | `console`    |
+| `-o, --out <path>`    | Write the report to a file instead of stdout               | stdout       |
+| `-i, --ignore <glob>` | Glob to exclude (repeatable)                               | —            |
+| `--fail-on-drift`     | Exit non-zero when findings exceed `--max-drift`           | off          |
+| `--max-drift <n>`     | Allowed findings before failing                            | `0`          |
+| `--enable-ai`         | Add LLM explanations to `console`/`pretty` reports         | off          |
+| `--llm-provider <p>`  | `anthropic`, `google`, or `openai`                         | `anthropic`  |
+| `--llm-model <id>`    | Model id (falls back to the provider's default)            | per-provider |
 
 ### Exit codes
 
@@ -129,11 +132,55 @@ A `drift.config.json` in the working directory is auto-discovered (or point at o
   "ignore": ["**/node_modules/**", "**/dist/**"],
   "format": "console",
   "failOnDrift": false,
-  "maxDrift": 0
+  "maxDrift": 0,
+  "ai": { "enabled": false, "provider": "anthropic", "model": "claude-opus-4-8" }
 }
 ```
 
 A missing default config is fine (defaults apply); a config passed via `--config` that is missing or malformed exits with code `2`.
+
+---
+
+## 🤖 AI-powered explanations (optional)
+
+By default the tool is fully deterministic and makes **no network calls**. When you opt in with `--enable-ai` (or `"ai": { "enabled": true }` in config), each finding in the `console`/`pretty` report gains an indented line with a plain-language rationale and the model's confidence:
+
+```text
+fixtures/sample-app/BadCard.tsx:6  hardcoded-color  #1a73e8 → brand-primary
+    ↳ This blue is within a hair of the brand-primary token; use it instead. (92% confidence)
+```
+
+Explanations are only rendered for `console`/`pretty` output — `json` and `sarif` skip the LLM round-trips entirely.
+
+### Choosing a provider and model
+
+Pick a provider with `--llm-provider` (or `ai.provider`) and, optionally, a specific model with `--llm-model` (or `ai.model`). If you omit the model, the provider's default is used. Model ids are **never hardcoded in the tool** — pass whichever version you want.
+
+| Provider (`--llm-provider`) | API key environment variable   | Default model      |
+| --------------------------- | ------------------------------ | ------------------ |
+| `anthropic` _(default)_     | `ANTHROPIC_API_KEY`            | `claude-opus-4-8`  |
+| `google`                    | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash` |
+| `openai`                    | `OPENAI_API_KEY`               | `gpt-4o`           |
+
+### Setting the API key
+
+The key is read from the environment variable for your chosen provider — it is **not** stored in `drift.config.json`. Set it in your shell before running a scan:
+
+```bash
+# Anthropic (default provider)
+export ANTHROPIC_API_KEY="sk-ant-..."
+node dist/index.js scan "src/**/*.tsx" --enable-ai
+
+# Google Gemini, pinning a specific model
+export GOOGLE_GENERATIVE_AI_API_KEY="AIza..."
+node dist/index.js scan "src/**/*.tsx" --enable-ai --llm-provider google --llm-model gemini-2.5-flash
+
+# OpenAI
+export OPENAI_API_KEY="sk-..."
+node dist/index.js scan "src/**/*.tsx" --enable-ai --llm-provider openai
+```
+
+If the required key is missing (or the provider rejects the request), the scan still completes with its deterministic findings and prints a one-line warning to stderr — AI enrichment never blocks a report or changes the exit code.
 
 ---
 
