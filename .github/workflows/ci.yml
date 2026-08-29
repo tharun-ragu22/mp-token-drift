@@ -41,7 +41,7 @@ jobs:
         run: npm test
 
   evals:
-    name: LLM evals (Gemma E4B)
+    name: LLM evals (Gemma 4)
     runs-on: ubuntu-latest
     # Gate: only score the model after every deterministic check has passed.
     needs: test
@@ -49,7 +49,7 @@ jobs:
       RUN_LLM_EVALS: '1'
       # Target the locally served model through the OpenAI-compatible endpoint.
       LLM_PROVIDER: openai
-      LLM_MODEL: gemma3n:e4b
+      LLM_MODEL: gemma4:e4b
       OPENAI_API_KEY: ollama # Ollama ignores the value but the factory requires one.
       OPENAI_BASE_URL: http://localhost:11434/v1
       # A 4B local model is held to a realistic bar; raise once it proves out.
@@ -81,8 +81,9 @@ jobs:
             sleep 1
           done
 
-      - name: Pull Gemma E4B
-        run: ollama pull gemma3n:e4b
+      - name: Pull Gemma 4
+        # Single source of truth: pull exactly the model the eval targets.
+        run: ollama pull "$LLM_MODEL"
 
       - name: Run LLM evals
         run: npm run eval
