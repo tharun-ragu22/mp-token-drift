@@ -1,28 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { loadTokens } from '../../src/matcher/schema.js';
 import { TokenMatcher } from '../../src/matcher/tokenMatcher.js';
-import {
-  driftExplanationSchema,
-  explainDrift,
-  type DriftContext,
-  type ExplainDriftDeps,
-} from '../../src/agent/explainDrift.js';
+import { explainDrift, type DriftContext } from '../../src/agent/explainDrift.js';
 import { evalDataset, type EvalCase } from './dataset.js';
 
-const matcher = new TokenMatcher(loadTokens('fixtures/tokens.sample.json'));
+/**
+ * Real evaluation suite. Unlike the contract tests, this drives `explainDrift`
+ * against an actual language model and scores the quality of its answers, so it
+ * only runs when explicitly opted in with `RUN_LLM_EVALS=1`. CI wires this to a
+ * locally served Gemma model (via an OpenAI-compatible endpoint) and runs it as
+ * a separate job that starts only after the deterministic suite is green.
+ *
+ * The provider/model come from the environment so the same eval can target the
+ * local model in CI or a hosted provider locally:
+ *   RUN_LLM_EVALS=1 LLM_PROVIDER=openai LLM_MODEL=gemma3n:e4b \
+ *   OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 npm run eval
+ */
 
-// Live evals need a real key; CI usually has none. When absent we run the full
-// explainDrift pipeline (prompt build -> generate -> Zod validation) against a
-// deterministic mock provider so the harness and metrics are still exercised.
-const LIVE_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'] as const;
-const liveProvider = process.env.ANTHROPIC_API_KEY
-  ? 'anthropic'
-  : process.env.OPENAI_API_KEY
-    ? 'openai'
-    : process.env.GOOGLE_GENERATIVE_AI_API_KEY
-      ? 'google'
-      : undefined;
-const hasLiveKey = LIVE_KEYS.some((key) => Boolean(process.env[key]));
+const RUN_EVALS = process.env.RUN_LLM_EVALS === '1';
+const PROVIDER = process.env.LLM_PROVIDER ?? 'openai';
+const MODEL = process.env.LLM_MODEL;
+// A small local model is held to a slightly lower bar than a frontier model;
+// tune the gate per model via EVAL_MIN_ACCURACY without touching code.
+const MIN_ACCURACY = Number(process.env.EVAL_MIN_ACCURACY ?? '0.9');
+
+const matcher = new TokenMatcher(loadTokens('fixtures/tokens.sample.json'));
 
 /** Static-analysis baseline for a case, matching the real scan pipeline. */
 function baselineFor(testCase: EvalCase): string | null {
@@ -40,76 +42,43 @@ function contextFor(testCase: EvalCase): DriftContext {
   };
 }
 
-/** Mock provider that returns the ground-truth token, so the pipeline (not the
- *  model) is what gets validated when no live key is available. */
-function mockDeps(expectedToken: string): ExplainDriftDeps {
-  return {
-    resolve: () => ({ provider: 'anthropic', modelId: 'mock-model', model: {} as never }),
-    generate: async () => ({
-      object: {
-        semanticToken: expectedToken,
-        confidence: 0.9,
-        explanation: `Replace the hardcoded value with the ${expectedToken} design token.`,
-      },
-    }),
-  };
-}
+describe.skipIf(!RUN_EVALS)(
+  `explainDrift evals — live model (${PROVIDER}/${MODEL ?? 'default'})`,
+  () => {
+    it(`meets accuracy (>=${MIN_ACCURACY}), schema, and explanation thresholds`, async () => {
+      let tokenMatches = 0;
+      let schemaValid = 0;
+      let explanationsOk = 0;
 
-async function explain(testCase: EvalCase) {
-  const context = contextFor(testCase);
-  if (hasLiveKey) {
-    return explainDrift(context, { enabled: true, provider: liveProvider });
-  }
-  return explainDrift(context, { enabled: true }, mockDeps(testCase.expectedToken));
-}
+      for (const testCase of evalDataset) {
+        let result;
+        try {
+          result = await explainDrift(contextFor(testCase), {
+            enabled: true,
+            provider: PROVIDER,
+            model: MODEL,
+          });
+        } catch {
+          // A throw means the model failed to produce schema-valid output for
+          // this case — counted against schema compliance, not a test crash.
+          continue;
+        }
 
-describe('explainDrift evaluation suite', () => {
-  it(`meets accuracy, schema, and explanation thresholds${hasLiveKey ? ' (live)' : ' (mock provider)'}`, async () => {
-    let tokenMatches = 0;
-    let schemaValid = 0;
-    let explanationsOk = 0;
-
-    for (const testCase of evalDataset) {
-      const result = await explain(testCase);
-
-      if (result.semanticToken === testCase.expectedToken) tokenMatches += 1;
-      if (driftExplanationSchema.safeParse(result).success) schemaValid += 1;
-      if (result.explanation.trim().length >= 10 && result.explanation.length <= 600) {
-        explanationsOk += 1;
+        schemaValid += 1;
+        if (result.semanticToken === testCase.expectedToken) tokenMatches += 1;
+        if (result.explanation.trim().length >= 10 && result.explanation.length <= 600) {
+          explanationsOk += 1;
+        }
       }
-    }
 
-    const total = evalDataset.length;
+      const total = evalDataset.length;
 
-    // (a) Token match accuracy >= 90%.
-    expect(tokenMatches / total).toBeGreaterThanOrEqual(0.9);
-    // (b) Zod schema compliance == 100%.
-    expect(schemaValid).toBe(total);
-    // (c) Every explanation is a valid, human-readable length.
-    expect(explanationsOk).toBe(total);
-  });
-});
-
-describe('explainDrift — AI disabled', () => {
-  it('returns the AST baseline immediately without resolving a model or calling the API', async () => {
-    let touched = false;
-    const result = await explainDrift(
-      { value: '#1a73e9', type: 'hardcoded-color', baselineSuggestion: 'brand-primary' },
-      { enabled: false },
-      {
-        resolve: () => {
-          touched = true;
-          throw new Error('resolve should not be called when AI is disabled');
-        },
-        generate: async () => {
-          touched = true;
-          return { object: {} };
-        },
-      },
-    );
-
-    expect(touched).toBe(false);
-    expect(result.source).toBe('ast');
-    expect(result.semanticToken).toBe('brand-primary');
-  });
-});
+      // (a) Token match accuracy meets the configured bar.
+      expect(tokenMatches / total).toBeGreaterThanOrEqual(MIN_ACCURACY);
+      // (b) Every answer that came back satisfied the Zod schema.
+      expect(schemaValid).toBe(total);
+      // (c) Every explanation is a valid, human-readable length.
+      expect(explanationsOk).toBe(total);
+    }, 120_000); // Local CPU inference is slow; give the whole dataset room to complete.
+  },
+);

@@ -39,7 +39,17 @@ const PROVIDERS: Record<LlmProvider, ProviderConfig> = {
   openai: {
     apiKeyEnv: 'OPENAI_API_KEY',
     defaultModel: 'gpt-4o',
-    create: (apiKey, modelId) => createOpenAI({ apiKey })(modelId),
+    create: (apiKey, modelId) => {
+      // `OPENAI_BASE_URL`, when set, points the OpenAI-compatible client at any
+      // other server that speaks the same protocol — e.g. a locally served
+      // Ollama model (`http://localhost:11434/v1`) used by the CI eval job.
+      const baseURL = process.env.OPENAI_BASE_URL;
+      const client = createOpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
+      // The default callable targets OpenAI's Responses API, which compatible
+      // servers like Ollama don't implement — pin to chat completions (the
+      // universally supported surface) whenever a custom endpoint is set.
+      return baseURL ? client.chat(modelId) : client(modelId);
+    },
   },
 };
 

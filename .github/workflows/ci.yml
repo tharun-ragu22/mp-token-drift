@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    name: Deterministic checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -34,5 +35,54 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Contract + unit tests only. The eval suite self-skips here because
+      # RUN_LLM_EVALS is unset, so nothing in this job depends on live model output.
       - name: Run tests
         run: npm test
+
+  evals:
+    name: LLM evals (Gemma E4B)
+    runs-on: ubuntu-latest
+    # Gate: only score the model after every deterministic check has passed.
+    needs: test
+    env:
+      RUN_LLM_EVALS: '1'
+      # Target the locally served model through the OpenAI-compatible endpoint.
+      LLM_PROVIDER: openai
+      LLM_MODEL: gemma3n:e4b
+      OPENAI_API_KEY: ollama # Ollama ignores the value but the factory requires one.
+      OPENAI_BASE_URL: http://localhost:11434/v1
+      # A 4B local model is held to a realistic bar; raise once it proves out.
+      EVAL_MIN_ACCURACY: '0.75'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama server
+        run: |
+          ollama serve &
+          # Wait for the daemon to accept connections before pulling.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:11434/api/version >/dev/null; then
+              echo "Ollama is up"; break
+            fi
+            sleep 1
+          done
+
+      - name: Pull Gemma E4B
+        run: ollama pull gemma3n:e4b
+
+      - name: Run LLM evals
+        run: npm run eval
