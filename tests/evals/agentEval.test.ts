@@ -13,12 +13,15 @@ import { evalDataset, type EvalCase } from './dataset.js';
  *
  * The provider/model come from the environment so the same eval can target the
  * local model in CI or a hosted provider locally:
- *   RUN_LLM_EVALS=1 LLM_PROVIDER=openai LLM_MODEL=gemma4:e4b \
- *   OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 npm run eval
+ *   RUN_LLM_EVALS=1 LLM_PROVIDER=ollama LLM_MODEL=gemma4:e4b npm run eval
+ *
+ * The `ollama` provider uses Ollama's native API, forwarding the response
+ * schema as its `format` field so decoding is grammar-constrained and the
+ * model is guaranteed to return schema-valid JSON.
  */
 
 const RUN_EVALS = process.env.RUN_LLM_EVALS === '1';
-const PROVIDER = process.env.LLM_PROVIDER ?? 'openai';
+const PROVIDER = process.env.LLM_PROVIDER ?? 'ollama';
 const MODEL = process.env.LLM_MODEL;
 // A small local model is held to a slightly lower bar than a frontier model;
 // tune the gate per model via EVAL_MIN_ACCURACY without touching code.

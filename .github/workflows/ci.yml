@@ -53,11 +53,12 @@ jobs:
     needs: test
     env:
       RUN_LLM_EVALS: '1'
-      # Target the locally served model through the OpenAI-compatible endpoint.
-      LLM_PROVIDER: openai
+      # Target the locally served model through Ollama's native API. This path
+      # forwards the response schema as Ollama's `format` field, so decoding is
+      # grammar-constrained and the model is guaranteed to return valid JSON —
+      # unlike the OpenAI-compatibility shim, which doesn't enforce the schema.
+      LLM_PROVIDER: ollama
       LLM_MODEL: gemma4:e4b
-      OPENAI_API_KEY: ollama # Ollama ignores the value but the factory requires one.
-      OPENAI_BASE_URL: http://localhost:11434/v1
       # A 4B local model is held to a realistic bar; raise once it proves out.
       EVAL_MIN_ACCURACY: '0.75'
     steps:

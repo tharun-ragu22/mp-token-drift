@@ -82,8 +82,9 @@ function buildPrompt(context: DriftContext): string {
       ? `\nChoose exactly one token from this list, copied verbatim:\n${context.candidates!.join(', ')}`
       : '',
     '',
-    'Reply with the chosen semanticToken, a confidence in [0,1], and a one-sentence',
-    'explanation a developer can act on.',
+    'Respond with ONLY a single JSON object — no prose, no markdown, no code',
+    'fences, nothing before or after it — of exactly this shape:',
+    '{"semanticToken": "<one token, copied verbatim>", "confidence": <number between 0 and 1>, "explanation": "<one sentence a developer can act on>"}',
   ]
     .filter(Boolean)
     .join('\n');

@@ -90,7 +90,7 @@ mp-token-drift scan [options] [patterns...]
 | `--fail-on-drift`     | Exit non-zero when findings exceed `--max-drift`           | off          |
 | `--max-drift <n>`     | Allowed findings before failing                            | `0`          |
 | `--enable-ai`         | Add LLM explanations to `console`/`pretty` reports         | off          |
-| `--llm-provider <p>`  | `anthropic`, `google`, or `openai`                         | `anthropic`  |
+| `--llm-provider <p>`  | `anthropic`, `google`, `openai`, or `ollama`               | `anthropic`  |
 | `--llm-model <id>`    | Model id (falls back to the provider's default)            | per-provider |
 
 ### Exit codes
@@ -156,11 +156,14 @@ Explanations are only rendered for `console`/`pretty` output — `json` and `sar
 
 Pick a provider with `--llm-provider` (or `ai.provider`) and, optionally, a specific model with `--llm-model` (or `ai.model`). If you omit the model, the provider's default is used. Model ids are **never hardcoded in the tool** — pass whichever version you want.
 
-| Provider (`--llm-provider`) | API key environment variable   | Default model      |
-| --------------------------- | ------------------------------ | ------------------ |
-| `anthropic` _(default)_     | `ANTHROPIC_API_KEY`            | `claude-opus-4-8`  |
-| `google`                    | `GOOGLE_GENERATIVE_AI_API_KEY` | `gemini-2.0-flash` |
-| `openai`                    | `OPENAI_API_KEY`               | `gpt-4o`           |
+| Provider (`--llm-provider`) | API key environment variable                   | Default model      |
+| --------------------------- | ---------------------------------------------- | ------------------ |
+| `anthropic` _(default)_     | `ANTHROPIC_API_KEY`                            | `claude-opus-4-8`  |
+| `google`                    | `GOOGLE_GENERATIVE_AI_API_KEY`                 | `gemini-2.0-flash` |
+| `openai`                    | `OPENAI_API_KEY`                               | `gpt-4o`           |
+| `ollama` _(local, no key)_  | — (set `OLLAMA_BASE_URL` to override the host) | `llama3.2`         |
+
+The `ollama` provider talks to a locally running [Ollama](https://ollama.com) server (default `http://127.0.0.1:11434`) and needs no API key. It uses Ollama's native structured-output `format`, so the model is constrained to emit schema-valid JSON.
 
 ### Setting the API key
 
@@ -178,6 +181,9 @@ node dist/index.js scan "src/**/*.tsx" --enable-ai --llm-provider google --llm-m
 # OpenAI
 export OPENAI_API_KEY="sk-..."
 node dist/index.js scan "src/**/*.tsx" --enable-ai --llm-provider openai
+
+# Ollama (local, no key) — start `ollama serve` and pull the model first
+node dist/index.js scan "src/**/*.tsx" --enable-ai --llm-provider ollama --llm-model gemma4:e4b
 ```
 
 If the required key is missing (or the provider rejects the request), the scan still completes with its deterministic findings and prints a one-line warning to stderr — AI enrichment never blocks a report or changes the exit code.
