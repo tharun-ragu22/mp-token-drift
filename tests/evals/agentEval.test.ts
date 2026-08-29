@@ -65,9 +65,36 @@ describe.skipIf(!RUN_EVALS)(
               provider: PROVIDER,
               model: MODEL,
             });
-          } catch {
+          } catch (error) {
             // A throw means the model failed to produce schema-valid output for
             // this case — counted against schema compliance, not a test crash.
+            // Log the raw payload and the exact validation cause so a red run
+            // tells us *which* constraint the live model violated (e.g. an empty
+            // explanation or a confidence outside [0,1]) rather than leaving it
+            // to speculation. `generateObject` throws NoObjectGeneratedError,
+            // whose `.text` is the model's raw output and `.cause` the reason.
+            const err = error as {
+              name?: string;
+              message?: string;
+              text?: string;
+              cause?: unknown;
+            };
+            console.error(
+              `[eval] schema failure — ${testCase.type} "${testCase.value}" ` +
+                `(expected ${testCase.expectedToken}):`,
+            );
+            console.error(
+              JSON.stringify(
+                {
+                  error: err.name,
+                  message: err.message,
+                  rawModelText: err.text,
+                  cause: err.cause instanceof Error ? err.cause.message : err.cause,
+                },
+                null,
+                2,
+              ),
+            );
             continue;
           }
 
