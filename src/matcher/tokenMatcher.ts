@@ -93,6 +93,32 @@ export class TokenMatcher {
     this.radius = toScalePoints(tokens.radius);
   }
 
+  /** Names of every color token, e.g. `['brand-primary', 'danger', ...]`. */
+  private colorNames(): string[] {
+    return this.colorTokens.map((token) => token.name);
+  }
+
+  /**
+   * The set of valid replacement tokens a drift value could map to, formatted
+   * exactly as a suggestion would be: bare color names for inline colors
+   * (`brand-primary`) and prefixed utilities for arbitrary classes (`p-3`,
+   * `bg-brand-primary`). Used to constrain the LLM agent to real tokens rather
+   * than letting it invent names.
+   */
+  candidatesFor(value: string): string[] {
+    const parsed = parseArbitraryClass(value);
+    // A raw color (no `prefix-[…]` shape) maps to the bare color-token names.
+    if (!parsed) return this.colorNames();
+
+    // A length-valued class maps to a spacing/radius scale; anything else is a
+    // prefixed color class.
+    const px = toPixels(parsed.value);
+    if (px === null) return this.colorNames().map((name) => `${parsed.prefix}-${name}`);
+
+    const scale = parsed.prefix.startsWith('rounded') ? this.radius : this.spacing;
+    return scale.map((point) => `${parsed.prefix}-${point.key}`);
+  }
+
   /** Find the perceptually closest color token to a raw color string. */
   matchColor(input: string): ColorMatch {
     const inputLab = toPerceptualColor(input);

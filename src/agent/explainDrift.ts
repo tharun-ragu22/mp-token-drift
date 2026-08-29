@@ -28,6 +28,11 @@ export interface DriftContext {
   baselineSuggestion: string | null;
   /** Optional source snippet for extra context. */
   snippet?: string;
+  /**
+   * The valid replacement tokens the model must choose from. Constrains the
+   * agent to real design-system tokens instead of invented names.
+   */
+  candidates?: string[];
 }
 
 /** Toggles and provider selection for the reasoning agent. */
@@ -56,22 +61,28 @@ export interface ExplainDriftDeps {
 }
 
 const defaultGenerate: AiGenerateFn = async ({ model, schema, prompt }) => {
-  const result = await generateObject({ model, schema, prompt });
+  // temperature 0: a linter should give stable, reproducible suggestions (and
+  // it keeps the eval scores from drifting run to run).
+  const result = await generateObject({ model, schema, prompt, temperature: 0 });
   return { object: result.object };
 };
 
 function buildPrompt(context: DriftContext): string {
   const baseline = context.baselineSuggestion ?? '(none found by static analysis)';
+  const hasCandidates = context.candidates !== undefined && context.candidates.length > 0;
   return [
     'You are a design-system linter. A component uses a hardcoded value that drifts',
-    'from the approved design tokens. Recommend the single closest semantic token.',
+    'from the approved design tokens. Pick the single best replacement token.',
     '',
     `Drift type: ${context.type}`,
     `Raw value: ${context.value}`,
     context.snippet ? `Source: ${context.snippet}` : '',
     `Nearest token from static analysis: ${baseline}`,
+    hasCandidates
+      ? `\nChoose exactly one token from this list, copied verbatim:\n${context.candidates!.join(', ')}`
+      : '',
     '',
-    'Reply with the semantic token name, a confidence in [0,1], and a one-sentence',
+    'Reply with the chosen semanticToken, a confidence in [0,1], and a one-sentence',
     'explanation a developer can act on.',
   ]
     .filter(Boolean)

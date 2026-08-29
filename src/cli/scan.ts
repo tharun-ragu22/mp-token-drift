@@ -59,6 +59,7 @@ function collectDrift(files: string[], matcher: TokenMatcher): DriftItem[] {
  */
 async function enrichWithAi(
   items: DriftItem[],
+  matcher: TokenMatcher,
   ai: ResolvedConfig['ai'],
 ): Promise<{ items: DriftItem[]; warning: string }> {
   if (items.length === 0) return { items, warning: '' };
@@ -70,7 +71,12 @@ async function enrichWithAi(
     const enriched = await Promise.all(
       items.map(async (item) => {
         const result = await explainDrift(
-          { value: item.value, type: item.type, baselineSuggestion: item.suggestion },
+          {
+            value: item.value,
+            type: item.type,
+            baselineSuggestion: item.suggestion,
+            candidates: matcher.candidatesFor(item.value),
+          },
           options,
         );
         return { ...item, explanation: result.explanation, confidence: result.confidence };
@@ -112,7 +118,7 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
   const consoleFormat = config.format === 'console' || config.format === 'pretty';
   let aiWarning = '';
   if (config.ai.enabled && consoleFormat) {
-    const enriched = await enrichWithAi(items, config.ai);
+    const enriched = await enrichWithAi(items, matcher, config.ai);
     items = enriched.items;
     aiWarning = enriched.warning;
   }

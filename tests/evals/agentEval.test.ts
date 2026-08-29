@@ -43,6 +43,7 @@ function contextFor(testCase: EvalCase): DriftContext {
     type: testCase.type,
     baselineSuggestion: baselineFor(testCase),
     snippet: testCase.jsx,
+    candidates: matcher.candidatesFor(testCase.value),
   };
 }
 

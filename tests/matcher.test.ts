@@ -116,3 +116,33 @@ describe('TokenMatcher - invalid and non-matching inputs', () => {
     expect(matcher.matchClass('bg-[#ff00ff]').matchedToken).toBeNull();
   });
 });
+
+describe('TokenMatcher - candidate tokens (LLM choices)', () => {
+  it('offers bare color-token names for an inline color', () => {
+    const candidates = matcher.candidatesFor('#1a73e9');
+    expect(candidates).toContain('brand-primary'); // the correct match is present
+    expect(candidates).toEqual(
+      expect.arrayContaining(['brand-primary', 'danger', 'neutral-900', 'white']),
+    );
+    expect(candidates).not.toContain('p-3'); // no scale utilities for a color
+  });
+
+  it('offers prefixed spacing utilities for an arbitrary spacing class', () => {
+    const candidates = matcher.candidatesFor('p-[13px]');
+    expect(candidates).toContain('p-3'); // the correct match is present
+    expect(candidates.every((c) => c.startsWith('p-'))).toBe(true);
+  });
+
+  it('offers prefixed radius utilities for an arbitrary radius class', () => {
+    const candidates = matcher.candidatesFor('rounded-[7px]');
+    expect(candidates).toContain('rounded-md');
+    expect(candidates).toContain('rounded-full');
+    expect(candidates.every((c) => c.startsWith('rounded-'))).toBe(true);
+  });
+
+  it('offers prefixed color utilities for an arbitrary color class', () => {
+    const candidates = matcher.candidatesFor('bg-[#1a73e9]');
+    expect(candidates).toContain('bg-brand-primary'); // the correct match is present
+    expect(candidates.every((c) => c.startsWith('bg-'))).toBe(true);
+  });
+});

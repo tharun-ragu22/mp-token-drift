@@ -20,6 +20,7 @@ const context: DriftContext = {
   type: 'hardcoded-color',
   baselineSuggestion: 'brand-primary',
   snippet: '<div style={{ color: "#1a73e9" }} />',
+  candidates: ['brand-primary', 'danger', 'white'],
 };
 
 /** A provider stub that never touches the network. */
@@ -81,6 +82,9 @@ describe('explainDrift — request contract', () => {
     // The prompt must carry the concrete finding so the model has something to reason about.
     expect(calls.args?.prompt).toContain('#1a73e9');
     expect(calls.args?.prompt).toContain('brand-primary');
+    // ...and constrain the choice to the real design-system tokens.
+    expect(calls.args?.prompt).toContain('danger');
+    expect(calls.args?.prompt).toContain('white');
   });
 
   it('falls back to the default provider when none is supplied', async () => {
