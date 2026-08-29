@@ -59,6 +59,22 @@ describe('resolveModel', () => {
     expect(resolved.modelId.length).toBeGreaterThan(0);
   });
 
+  it('resolves an Ollama model with no API key (local provider)', () => {
+    // A local provider authenticates nothing, so it must resolve even when no
+    // key env var is set — the distinguishing behaviour from hosted providers.
+    delete process.env.OPENAI_API_KEY;
+    const resolved = resolveModel('ollama');
+    expect(resolved.provider).toBe('ollama');
+    expect(resolved.model).toBeTypeOf('object');
+    expect(resolved.modelId.length).toBeGreaterThan(0);
+  });
+
+  it('honours an explicit Ollama model id', () => {
+    const resolved = resolveModel('ollama', 'gemma4:e4b');
+    expect(resolved.provider).toBe('ollama');
+    expect(resolved.modelId).toBe('gemma4:e4b');
+  });
+
   it('resolves dynamically from LLM_PROVIDER / LLM_MODEL environment variables', () => {
     process.env.LLM_PROVIDER = 'anthropic';
     process.env.LLM_MODEL = 'claude-sonnet-5';
