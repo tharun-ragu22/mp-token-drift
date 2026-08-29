@@ -23,6 +23,10 @@ const MODEL = process.env.LLM_MODEL;
 // A small local model is held to a slightly lower bar than a frontier model;
 // tune the gate per model via EVAL_MIN_ACCURACY without touching code.
 const MIN_ACCURACY = Number(process.env.EVAL_MIN_ACCURACY ?? '0.9');
+// CPU inference of a local model is slow: a one-time model load plus a
+// structured-output generation per case. The whole dataset can take several
+// minutes, so the budget is generous and tunable via EVAL_TIMEOUT_MS.
+const TIMEOUT_MS = Number(process.env.EVAL_TIMEOUT_MS ?? '900000');
 
 const matcher = new TokenMatcher(loadTokens('fixtures/tokens.sample.json'));
 
@@ -45,40 +49,44 @@ function contextFor(testCase: EvalCase): DriftContext {
 describe.skipIf(!RUN_EVALS)(
   `explainDrift evals — live model (${PROVIDER}/${MODEL ?? 'default'})`,
   () => {
-    it(`meets accuracy (>=${MIN_ACCURACY}), schema, and explanation thresholds`, async () => {
-      let tokenMatches = 0;
-      let schemaValid = 0;
-      let explanationsOk = 0;
+    it(
+      `meets accuracy (>=${MIN_ACCURACY}), schema, and explanation thresholds`,
+      async () => {
+        let tokenMatches = 0;
+        let schemaValid = 0;
+        let explanationsOk = 0;
 
-      for (const testCase of evalDataset) {
-        let result;
-        try {
-          result = await explainDrift(contextFor(testCase), {
-            enabled: true,
-            provider: PROVIDER,
-            model: MODEL,
-          });
-        } catch {
-          // A throw means the model failed to produce schema-valid output for
-          // this case — counted against schema compliance, not a test crash.
-          continue;
+        for (const testCase of evalDataset) {
+          let result;
+          try {
+            result = await explainDrift(contextFor(testCase), {
+              enabled: true,
+              provider: PROVIDER,
+              model: MODEL,
+            });
+          } catch {
+            // A throw means the model failed to produce schema-valid output for
+            // this case — counted against schema compliance, not a test crash.
+            continue;
+          }
+
+          schemaValid += 1;
+          if (result.semanticToken === testCase.expectedToken) tokenMatches += 1;
+          if (result.explanation.trim().length >= 10 && result.explanation.length <= 600) {
+            explanationsOk += 1;
+          }
         }
 
-        schemaValid += 1;
-        if (result.semanticToken === testCase.expectedToken) tokenMatches += 1;
-        if (result.explanation.trim().length >= 10 && result.explanation.length <= 600) {
-          explanationsOk += 1;
-        }
-      }
+        const total = evalDataset.length;
 
-      const total = evalDataset.length;
-
-      // (a) Token match accuracy meets the configured bar.
-      expect(tokenMatches / total).toBeGreaterThanOrEqual(MIN_ACCURACY);
-      // (b) Every answer that came back satisfied the Zod schema.
-      expect(schemaValid).toBe(total);
-      // (c) Every explanation is a valid, human-readable length.
-      expect(explanationsOk).toBe(total);
-    }, 120_000); // Local CPU inference is slow; give the whole dataset room to complete.
+        // (a) Token match accuracy meets the configured bar.
+        expect(tokenMatches / total).toBeGreaterThanOrEqual(MIN_ACCURACY);
+        // (b) Every answer that came back satisfied the Zod schema.
+        expect(schemaValid).toBe(total);
+        // (c) Every explanation is a valid, human-readable length.
+        expect(explanationsOk).toBe(total);
+      },
+      TIMEOUT_MS,
+    );
   },
 );
