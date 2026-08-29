@@ -13,7 +13,7 @@ import { evalDataset, type EvalCase } from './dataset.js';
  *
  * The provider/model come from the environment so the same eval can target the
  * local model in CI or a hosted provider locally:
- *   RUN_LLM_EVALS=1 LLM_PROVIDER=openai LLM_MODEL=gemma3n:e4b \
+ *   RUN_LLM_EVALS=1 LLM_PROVIDER=openai LLM_MODEL=gemma4:e4b \
  *   OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 npm run eval
  */
 

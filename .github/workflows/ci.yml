@@ -41,7 +41,7 @@ jobs:
         run: npm test
 
   evals:
-    name: LLM evals (Gemma 4)
+    name: LLM evals (Gemma E4B)
     runs-on: ubuntu-latest
     # Gate: only score the model after every deterministic check has passed.
     needs: test
@@ -81,9 +81,8 @@ jobs:
             sleep 1
           done
 
-      - name: Pull Gemma 4
-        # Single source of truth: pull exactly the model the eval targets.
-        run: ollama pull "$LLM_MODEL"
+      - name: Pull Gemma E4B
+        run: ollama pull gemma4:e4b
 
       - name: Run LLM evals
         run: npm run eval
