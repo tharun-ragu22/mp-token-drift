@@ -17,6 +17,15 @@ function message(item: DriftItem): string {
 }
 
 /**
+ * SARIF artifact URIs are resolved against the repository root and must use
+ * forward slashes. Normalize Windows-style backslash separators so paths
+ * produced on Windows runners still resolve in GitHub Code Scanning.
+ */
+function toArtifactUri(file: string): string {
+  return file.replace(/\\/g, '/');
+}
+
+/**
  * Render findings as a SARIF v2.1.0 report so GitHub code scanning can ingest
  * them. Only the rules actually triggered are declared in the tool driver.
  */
@@ -35,7 +44,7 @@ export function formatSarif(items: DriftItem[]): string {
     locations: [
       {
         physicalLocation: {
-          artifactLocation: { uri: item.file },
+          artifactLocation: { uri: toArtifactUri(item.file) },
           region: { startLine: item.line },
         },
       },

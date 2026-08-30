@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ACTION_INPUT_NAMES, SARIF_OUTPUT_PATH, buildScanArgs } from '../../src/ci/actionFlags.js';
 import { computeCacheKey } from '../../src/ci/cacheKey.js';
+import { formatSarif } from '../../src/reporter/sarifReporter.js';
+import type { DriftItem } from '../../src/reporter/types.js';
 import { run } from '../../src/cli/index.js';
 
 const TOKENS = 'fixtures/tokens.sample.json';
@@ -216,7 +218,53 @@ describe('CI action - computeCacheKey', () => {
     );
   });
 
-  it('throws when a hashed file is missing', () => {
+  it('throws when the required tokens file is missing', () => {
     expect(() => computeCacheKey('does-not-exist.json', 'also-missing.json')).toThrow();
+  });
+
+  it('does not crash when the config file is missing but tokens exist', () => {
+    const dir = makeTempDir();
+    const tokens = join(dir, 'tokens.json');
+    writeFileSync(tokens, JSON.stringify({ colors: {} }));
+    // drift.config.json is optional: a project may run purely on flags/defaults.
+    const missingConfig = join(dir, 'drift.config.json');
+
+    expect(() => computeCacheKey(missingConfig, tokens)).not.toThrow();
+
+    const key = computeCacheKey(missingConfig, tokens);
+    expect(key).toMatch(/^mp-token-drift-[0-9a-f]{16,}$/);
+    // Still deterministic across calls when the config is absent.
+    expect(computeCacheKey(missingConfig, tokens)).toBe(key);
+    // A present-but-empty config is not the same as a missing one.
+    writeFileSync(missingConfig, '');
+    expect(computeCacheKey(missingConfig, tokens)).not.toBe(key);
+  });
+});
+
+describe('CI action - SARIF Windows path normalization', () => {
+  it('rewrites backslash paths to forward-slash URIs for code scanning', () => {
+    const items: DriftItem[] = [
+      {
+        file: 'src\\components\\Card.tsx',
+        line: 3,
+        type: 'hardcoded-color',
+        value: '#1a73e8',
+        suggestion: 'brand-primary',
+      },
+    ];
+
+    const sarif = JSON.parse(formatSarif(items)) as {
+      runs: {
+        results: {
+          locations: { physicalLocation: { artifactLocation: { uri: string } } }[];
+        }[];
+      }[];
+    };
+
+    const uri = sarif.runs[0]?.results[0]?.locations[0]?.physicalLocation.artifactLocation.uri;
+    // SARIF artifact URIs must use forward slashes so code scanning can resolve
+    // them against the repo root on Windows runners.
+    expect(uri).toBe('src/components/Card.tsx');
+    expect(uri).not.toContain('\\');
   });
 });
