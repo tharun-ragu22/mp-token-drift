@@ -2,11 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  ACTION_INPUT_NAMES,
-  SARIF_OUTPUT_PATH,
-  buildScanArgs,
-} from '../../src/ci/actionFlags.js';
+import { ACTION_INPUT_NAMES, SARIF_OUTPUT_PATH, buildScanArgs } from '../../src/ci/actionFlags.js';
 import { computeCacheKey } from '../../src/ci/cacheKey.js';
 import { run } from '../../src/cli/index.js';
 
@@ -134,7 +130,16 @@ describe('CI action - SARIF for GitHub Code Scanning', () => {
   it('emits repository-relative artifact paths compatible with code scanning', async () => {
     const out = join(makeTempDir(), SARIF_OUTPUT_PATH);
 
-    const res = await run(['scan', BAD_CARD, '--tokens', TOKENS, '--format', 'sarif', '--out', out]);
+    const res = await run([
+      'scan',
+      BAD_CARD,
+      '--tokens',
+      TOKENS,
+      '--format',
+      'sarif',
+      '--out',
+      out,
+    ]);
     expect(res.exitCode).toBe(0);
     expect(existsSync(out)).toBe(true);
 

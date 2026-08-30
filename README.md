@@ -28,6 +28,7 @@ When product teams move quickly from AI-generated prototypes to production codeb
 - 🛠️ **Production CLI & Reporters:** `scan` command with glob input, ignore patterns, and `console` / `pretty` / `json` / `sarif` output. Emits [SARIF v2.1.0](https://sarifweb.azurewebsites.net/) for GitHub code scanning, gates CI via `--fail-on-drift`, and auto-detects `CI` to strip ANSI colors.
 - ⚙️ **Config & Suppression:** Zero-config via an auto-discovered `drift.config.json`, plus `// drift-ignore` / `/* drift-disable */` inline suppression directives.
 - 🔧 **AST-Safe Auto-Fixer:** `--fix` rewrites drift in place via `magic-string`, preserving formatting and comments, with a `@babel/parser` re-parse safety gate and a `--dry-run` unified-diff preview.
+- 🤖 **Composite GitHub Action:** A reusable `action.yml` maps its inputs onto the `scan` flags, uploads SARIF to code scanning, and derives its cache key from a SHA-256 digest of your config + token files.
 
 > 🚧 **Roadmap (not yet implemented):** a native MCP (Model Context Protocol) server for Cursor / agent workflows.
 
@@ -285,6 +286,34 @@ jobs:
 
 Point your config's `include` globs at the components you actually want audited (this repo ships no such workflow — its only `.tsx` are the intentional-drift fixtures used by the test suite). Uploading requires the **`security-events: write`** permission; on public repos code scanning is free, private repos need GitHub Advanced Security, and PRs from forks get a read-only token and can't upload.
 
+### Composite action
+
+The repo also ships a reusable composite action (`action.yml`) that wraps the scan-and-upload dance above. It generates SARIF, uploads it to code scanning (even when the drift gate fails, via `if: always()`), and caches on a key derived from your `config` + `tokens` files:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.x', cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - uses: tharun-ragu22/mp-token-drift@v1
+        with:
+          tokens: fixtures/tokens.sample.json
+          patterns: 'src/**/*.tsx'
+          fail-on-drift: 'true'
+          max-drift: '0'
+```
+
+Inputs map one-to-one onto the `scan` flags — `tokens`, `config`, `patterns`, `format` (default `sarif`), `output` (default `code-scanning.sarif`), `fail-on-drift`, `max-drift`, and `enable-ai`. The cache key is the same SHA-256 digest that `computeCacheKey(config, tokens)` in `src/ci/cacheKey.ts` produces, so a workflow can key `actions/cache` on the exact configuration a scan ran against.
+
 ---
 
 ## 🧱 Project layout
@@ -296,6 +325,8 @@ src/
   config/loadConfig.ts    # defaults < drift.config.json < CLI flags
   reporter/               # console / json / sarif renderers
   cli/                    # arg parsing, scan orchestration, run()
-tests/                    # Vitest suites (scanner, matcher, cli)
+  ci/                     # action flag mapping + cache-key hashing
+action.yml                # reusable composite GitHub Action
+tests/                    # Vitest suites (scanner, matcher, cli, ci)
 fixtures/                 # sample components + tokens files
 ```
