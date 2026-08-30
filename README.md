@@ -2,7 +2,7 @@
 
 > Design System Drift Auditor & Refactor Engine for React codebases. Built natively as a CLI tool and MCP (Model Context Protocol) Server for Cursor & Magic Patterns Agent workflows.
 
-<!-- [![CI Suite](https://github.com/YOUR_GITHUB_USERNAME/mp-token-drift/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/mp-token-drift/actions) -->
+[![CI Suite](https://github.com/tharun-ragu22/mp-token-drift/actions/workflows/ci.yml/badge.svg)](https://github.com/tharun-ragu22/mp-token-drift/actions)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
