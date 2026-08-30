@@ -16,6 +16,8 @@ export interface ScanCliOptions {
   enableAi?: boolean;
   llmProvider?: string;
   llmModel?: string;
+  fix?: boolean;
+  dryRun?: boolean;
 }
 
 export type ScanHandler = (patterns: string[], options: ScanCliOptions) => Promise<void>;
@@ -67,6 +69,8 @@ export function buildProgram(onScan: ScanHandler): Command {
     .option('--enable-ai', 'use the LLM reasoning agent to explain drift')
     .option('--llm-provider <provider>', 'LLM provider (anthropic|google|openai)')
     .option('--llm-model <model>', 'LLM model id (defaults to the provider default)')
+    .option('--fix', 'rewrite drift in place, replacing values with design tokens')
+    .option('--dry-run', 'with --fix, print the diff to stdout instead of writing files')
     .action((patterns: string[], options: ScanCliOptions) => onScan(patterns, options));
 
   return program;

@@ -39,6 +39,7 @@
   "devDependencies": {
     "@types/babel__traverse": "^7.28.0",
     "@types/culori": "^4.0.1",
+    "@types/diff": "^7.0.2",
     "@types/node": "^26.3.0",
     "eslint": "^10.9.1",
     "prettier": "^3.9.6",
@@ -56,7 +57,9 @@
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "culori": "^4.0.2",
+    "diff": "^9.0.0",
     "glob": "^13.0.6",
+    "magic-string": "^1.2.3",
     "ollama-ai-provider-v2": "^3.6.0",
     "zod": "^4.5.1"
   }
