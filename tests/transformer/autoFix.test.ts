@@ -195,3 +195,100 @@ describe('CLI - scan --fix', () => {
     expect(rewritten).not.toContain('#1a73e8');
   });
 });
+
+describe('applyFixes - edge cases', () => {
+  it('(a) rewrites multiple drift tokens on one line with correct offsets', () => {
+    const code = 'const el = <div className="p-[13px] m-[7px] bg-[#f0f0f0]" />;\n';
+    const targets: FixTarget[] = [
+      { type: 'arbitrary-class', value: 'p-[13px]', replacement: 'p-3' },
+      { type: 'arbitrary-class', value: 'm-[7px]', replacement: 'm-2' },
+      { type: 'arbitrary-class', value: 'bg-[#f0f0f0]', replacement: 'bg-white' },
+    ];
+
+    const result = applyFixes(code, targets);
+
+    expect(result.valid).toBe(true);
+    expect(result.applied).toBe(3);
+    // All three replaced, in order, with no offset drift corrupting neighbours.
+    expect(result.code).toContain('className="p-3 m-2 bg-white"');
+    expect(result.code).not.toMatch(/\[/);
+  });
+
+  it('(b) rewrites drift inside a template literal with a dynamic expression', () => {
+    const code = 'const el = <div className={`p-[13px] ${active ? "bg-[#1a73e8]" : ""}`} />;\n';
+    const targets: FixTarget[] = [
+      { type: 'arbitrary-class', value: 'p-[13px]', replacement: 'p-3' },
+      { type: 'arbitrary-class', value: 'bg-[#1a73e8]', replacement: 'bg-brand-primary' },
+    ];
+
+    const result = applyFixes(code, targets);
+
+    expect(result.valid).toBe(true);
+    expect(result.applied).toBe(2);
+    // The static quasi and the string inside the ternary are both rewritten...
+    expect(result.code).toContain('`p-3 ');
+    expect(result.code).toContain('"bg-brand-primary"');
+    // ...while the interpolation structure is preserved verbatim.
+    expect(result.code).toContain('${active ? "bg-brand-primary" : ""}');
+    expect(result.code).not.toContain('[13px]');
+    expect(result.code).not.toContain('#1a73e8');
+  });
+
+  it('(c) handles prop spreading and nested inline styles without touching siblings', () => {
+    const code = [
+      'const Card = ({ active, ...rest }) => (',
+      '  <div {...rest} className="p-[13px] rounded">',
+      '    <span style={{ color: "#1a73e8", border: "1px solid #d93025" }}>Hi</span>',
+      '  </div>',
+      ');',
+      '',
+    ].join('\n');
+    const targets: FixTarget[] = [
+      { type: 'arbitrary-class', value: 'p-[13px]', replacement: 'p-3' },
+      { type: 'hardcoded-color', value: '#1a73e8', replacement: 'brand-primary' },
+      { type: 'hardcoded-color', value: '#d93025', replacement: 'danger' },
+    ];
+
+    const result = applyFixes(code, targets);
+
+    expect(result.valid).toBe(true);
+    // Only the two exact drift sites are fixed; the spread is untouched...
+    expect(result.applied).toBe(2);
+    expect(result.code).toContain('{...rest}');
+    expect(result.code).toContain('className="p-3 rounded"');
+    expect(result.code).toContain('color: tokens.color.brand.primary');
+    // ...and a color embedded in a larger string is left alone (not safely a token).
+    expect(result.code).toContain('border: "1px solid #d93025"');
+  });
+
+  it('(d) leaves a clean file byte-for-byte identical and applies zero fixes', () => {
+    const clean = [
+      'export function CleanCard() {',
+      '  return (',
+      '    <div className="p-3 rounded shadow">',
+      '      <span style={{ color: tokens.color.brand.primary }}>Hi</span>',
+      '    </div>',
+      '  );',
+      '}',
+      '',
+    ].join('\n');
+
+    // No matching drift values present: nothing changes.
+    const result = applyFixes(clean, [
+      { type: 'arbitrary-class', value: 'p-[13px]', replacement: 'p-3' },
+      { type: 'hardcoded-color', value: '#1a73e8', replacement: 'brand-primary' },
+    ]);
+
+    expect(result.valid).toBe(true);
+    expect(result.applied).toBe(0);
+    expect(result.code).toBe(clean);
+
+    // And on disk: a clean file is never rewritten.
+    const file = makeTempFile('CleanCard.tsx', clean);
+    const fileResult = applyFixesToFile(file, [
+      { type: 'arbitrary-class', value: 'p-[13px]', replacement: 'p-3' },
+    ]);
+    expect(fileResult.applied).toBe(0);
+    expect(readFileSync(file, 'utf8')).toBe(clean);
+  });
+});
