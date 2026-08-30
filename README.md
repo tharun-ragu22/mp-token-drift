@@ -27,8 +27,9 @@ When product teams move quickly from AI-generated prototypes to production codeb
 - 🎨 **Delta-E Token Matcher:** Maps rogue colors to the nearest valid token using CIEDE2000 perceptual color distance (via [`culori`](https://culorijs.org/)), and maps off-scale spacings/radii to the closest utility. Understands `rem`→`px`, short hex, `rgb()/hsl()/oklch()`, and prefixed color classes (`bg-[#…]` → `bg-brand-primary`).
 - 🛠️ **Production CLI & Reporters:** `scan` command with glob input, ignore patterns, and `console` / `pretty` / `json` / `sarif` output. Emits [SARIF v2.1.0](https://sarifweb.azurewebsites.net/) for GitHub code scanning, gates CI via `--fail-on-drift`, and auto-detects `CI` to strip ANSI colors.
 - ⚙️ **Config & Suppression:** Zero-config via an auto-discovered `drift.config.json`, plus `// drift-ignore` / `/* drift-disable */` inline suppression directives.
+- 🔧 **AST-Safe Auto-Fixer:** `--fix` rewrites drift in place via `magic-string`, preserving formatting and comments, with a `@babel/parser` re-parse safety gate and a `--dry-run` unified-diff preview.
 
-> 🚧 **Roadmap (not yet implemented):** interactive/auto-fix rewrites and a native MCP (Model Context Protocol) server for Cursor / agent workflows.
+> 🚧 **Roadmap (not yet implemented):** a native MCP (Model Context Protocol) server for Cursor / agent workflows.
 
 ---
 
@@ -80,18 +81,20 @@ mp-token-drift scan [options] [patterns...]
 
 `patterns` are files or globs (quote them so your shell doesn't pre-expand). If omitted, the `include` globs from your config are used.
 
-| Option                | Description                                                | Default      |
-| --------------------- | ---------------------------------------------------------- | ------------ |
-| `-t, --tokens <path>` | Design-tokens file to match against                        | from config  |
-| `-c, --config <path>` | Explicit `drift.config.json` (else auto-discovered in cwd) | —            |
-| `-f, --format <fmt>`  | `console`, `pretty`, `json`, or `sarif`                    | `console`    |
-| `-o, --out <path>`    | Write the report to a file instead of stdout               | stdout       |
-| `-i, --ignore <glob>` | Glob to exclude (repeatable)                               | —            |
-| `--fail-on-drift`     | Exit non-zero when findings exceed `--max-drift`           | off          |
-| `--max-drift <n>`     | Allowed findings before failing                            | `0`          |
-| `--enable-ai`         | Add LLM explanations to `console`/`pretty` reports         | off          |
-| `--llm-provider <p>`  | `anthropic`, `google`, `openai`, or `ollama`               | `anthropic`  |
-| `--llm-model <id>`    | Model id (falls back to the provider's default)            | per-provider |
+| Option                | Description                                                 | Default      |
+| --------------------- | ----------------------------------------------------------- | ------------ |
+| `-t, --tokens <path>` | Design-tokens file to match against                         | from config  |
+| `-c, --config <path>` | Explicit `drift.config.json` (else auto-discovered in cwd)  | —            |
+| `-f, --format <fmt>`  | `console`, `pretty`, `json`, or `sarif`                     | `console`    |
+| `-o, --out <path>`    | Write the report to a file instead of stdout                | stdout       |
+| `-i, --ignore <glob>` | Glob to exclude (repeatable)                                | —            |
+| `--fail-on-drift`     | Exit non-zero when findings exceed `--max-drift`            | off          |
+| `--max-drift <n>`     | Allowed findings before failing                             | `0`          |
+| `--fix`               | Rewrite drift in place, replacing values with real tokens   | off          |
+| `--dry-run`           | With `--fix`, print a unified diff instead of writing files | off          |
+| `--enable-ai`         | Add LLM explanations to `console`/`pretty` reports          | off          |
+| `--llm-provider <p>`  | `anthropic`, `google`, `openai`, or `ollama`                | `anthropic`  |
+| `--llm-model <id>`    | Model id (falls back to the provider's default)             | per-provider |
 
 ### Exit codes
 
@@ -118,6 +121,31 @@ The matcher validates the tokens file against a strict schema (`colors`, `spacin
 ```
 
 Matching thresholds: colors match within a CIEDE2000 Delta-E of ~10 (0 = identical); dimensions match within a few pixels of the nearest scale step. Values beyond threshold report **no suggestion** rather than a wrong one.
+
+---
+
+## 🔧 Auto-fixing drift (`--fix`)
+
+`--fix` rewrites drift in place, swapping each hardcoded value for its nearest design token. The rewrite is **AST-safe**: drift sites are located through the Babel AST — so only real `className`/`style` values are touched, never a matching string in a comment or unrelated literal — and edited with [`magic-string`](https://github.com/Rich-Harris/magic-string), which preserves all surrounding formatting and comments byte-for-byte.
+
+```tsx
+// before
+<div className="p-[13px]" style={{ color: '#1a73e8' }} />
+
+// after `--fix`
+<div className="p-3" style={{ color: tokens.color.brand.primary }} />
+```
+
+Arbitrary Tailwind utilities become the nearest scale class (`p-[13px]` → `p-3`); inline colors become a `tokens.color.*` reference you can wire up to your token module.
+
+- **Safety gate:** every rewritten file is re-parsed with `@babel/parser`. If a fix would produce invalid syntax, that file is **skipped** (a warning goes to stderr) and left untouched — a broken transform is never written to disk.
+- **`--dry-run`:** preview the changes as a unified, git-style diff on stdout without modifying any files:
+
+  ```bash
+  node dist/index.js scan "src/**/*.tsx" --fix --dry-run
+  ```
+
+- **With `--enable-ai`:** `--fix` uses the LLM's recommended token when the [AI agent](#-ai-powered-explanations-optional) is enabled, falling back to the deterministic nearest-token match otherwise.
 
 ---
 
