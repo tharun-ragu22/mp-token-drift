@@ -1,0 +1,123 @@
+import { describe, expect, it } from 'vitest';
+import { loadTokens } from '../../src/matcher/schema.js';
+import { TokenMatcher } from '../../src/matcher/tokenMatcher.js';
+import { explainDrift, type DriftContext } from '../../src/agent/explainDrift.js';
+import { evalDataset, type EvalCase } from './dataset.js';
+
+/**
+ * Real evaluation suite. Unlike the contract tests, this drives `explainDrift`
+ * against an actual language model and scores the quality of its answers, so it
+ * only runs when explicitly opted in with `RUN_LLM_EVALS=1`. CI wires this to a
+ * locally served Gemma model (via an OpenAI-compatible endpoint) and runs it as
+ * a separate job that starts only after the deterministic suite is green.
+ *
+ * The provider/model come from the environment so the same eval can target the
+ * local model in CI or a hosted provider locally:
+ *   RUN_LLM_EVALS=1 LLM_PROVIDER=ollama LLM_MODEL=gemma4:e4b npm run eval
+ *
+ * The `ollama` provider uses Ollama's native API, forwarding the response
+ * schema as its `format` field so decoding is grammar-constrained and the
+ * model is guaranteed to return schema-valid JSON.
+ */
+
+const RUN_EVALS = process.env.RUN_LLM_EVALS === '1';
+const PROVIDER = process.env.LLM_PROVIDER ?? 'ollama';
+const MODEL = process.env.LLM_MODEL;
+// A small local model is held to a slightly lower bar than a frontier model;
+// tune the gate per model via EVAL_MIN_ACCURACY without touching code.
+const MIN_ACCURACY = Number(process.env.EVAL_MIN_ACCURACY ?? '0.9');
+// CPU inference of a local model is slow: a one-time model load plus a
+// structured-output generation per case. The whole dataset can take several
+// minutes, so the budget is generous and tunable via EVAL_TIMEOUT_MS.
+const TIMEOUT_MS = Number(process.env.EVAL_TIMEOUT_MS ?? '900000');
+
+const matcher = new TokenMatcher(loadTokens('fixtures/tokens.sample.json'));
+
+/** Static-analysis baseline for a case, matching the real scan pipeline. */
+function baselineFor(testCase: EvalCase): string | null {
+  return testCase.type === 'hardcoded-color'
+    ? matcher.matchColor(testCase.value).matchedToken
+    : matcher.matchClass(testCase.value).matchedToken;
+}
+
+function contextFor(testCase: EvalCase): DriftContext {
+  return {
+    value: testCase.value,
+    type: testCase.type,
+    baselineSuggestion: baselineFor(testCase),
+    snippet: testCase.jsx,
+    candidates: matcher.candidatesFor(testCase.value),
+  };
+}
+
+describe.skipIf(!RUN_EVALS)(
+  `explainDrift evals — live model (${PROVIDER}/${MODEL ?? 'default'})`,
+  () => {
+    it(
+      `meets accuracy (>=${MIN_ACCURACY}), schema, and explanation thresholds`,
+      async () => {
+        let tokenMatches = 0;
+        let schemaValid = 0;
+        let explanationsOk = 0;
+
+        for (const testCase of evalDataset) {
+          let result;
+          try {
+            result = await explainDrift(contextFor(testCase), {
+              enabled: true,
+              provider: PROVIDER,
+              model: MODEL,
+            });
+          } catch (error) {
+            // A throw means the model failed to produce schema-valid output for
+            // this case — counted against schema compliance, not a test crash.
+            // Log the raw payload and the exact validation cause so a red run
+            // tells us *which* constraint the live model violated (e.g. an empty
+            // explanation or a confidence outside [0,1]) rather than leaving it
+            // to speculation. `generateObject` throws NoObjectGeneratedError,
+            // whose `.text` is the model's raw output and `.cause` the reason.
+            const err = error as {
+              name?: string;
+              message?: string;
+              text?: string;
+              cause?: unknown;
+            };
+            console.error(
+              `[eval] schema failure — ${testCase.type} "${testCase.value}" ` +
+                `(expected ${testCase.expectedToken}):`,
+            );
+            console.error(
+              JSON.stringify(
+                {
+                  error: err.name,
+                  message: err.message,
+                  rawModelText: err.text,
+                  cause: err.cause instanceof Error ? err.cause.message : err.cause,
+                },
+                null,
+                2,
+              ),
+            );
+            continue;
+          }
+
+          schemaValid += 1;
+          if (result.semanticToken === testCase.expectedToken) tokenMatches += 1;
+          if (result.explanation.trim().length >= 10 && result.explanation.length <= 600) {
+            explanationsOk += 1;
+          }
+        }
+
+        const total = evalDataset.length;
+
+        // (a) Token match accuracy meets the configured bar.
+        expect(tokenMatches / total).toBeGreaterThanOrEqual(MIN_ACCURACY);
+        // (b) Every answer that came back satisfied the Zod schema.
+        expect(schemaValid).toBe(total);
+        // (c) Every explanation is a valid, human-readable length.
+        expect(explanationsOk).toBe(total);
+      },
+      TIMEOUT_MS,
+    );
+  },
+);

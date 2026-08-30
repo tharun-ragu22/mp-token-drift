@@ -13,6 +13,9 @@ export interface ScanCliOptions {
   ignore?: string[];
   failOnDrift?: boolean;
   maxDrift?: number;
+  enableAi?: boolean;
+  llmProvider?: string;
+  llmModel?: string;
 }
 
 export type ScanHandler = (patterns: string[], options: ScanCliOptions) => Promise<void>;
@@ -61,6 +64,9 @@ export function buildProgram(onScan: ScanHandler): Command {
     .option('-i, --ignore <glob>', 'glob to exclude (repeatable)', collect, [])
     .option('--fail-on-drift', 'exit non-zero when drift exceeds the threshold')
     .option('--max-drift <n>', 'maximum allowed drift findings', parseMaxDrift)
+    .option('--enable-ai', 'use the LLM reasoning agent to explain drift')
+    .option('--llm-provider <provider>', 'LLM provider (anthropic|google|openai)')
+    .option('--llm-model <model>', 'LLM model id (defaults to the provider default)')
     .action((patterns: string[], options: ScanCliOptions) => onScan(patterns, options));
 
   return program;
