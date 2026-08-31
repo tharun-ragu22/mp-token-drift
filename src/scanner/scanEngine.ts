@@ -58,7 +58,10 @@ export function scanSequential(files: string[], tokensPath: string): ScanEngineR
         });
       }
     } catch (error) {
-      errors.push({ filePath: file, error: error instanceof Error ? error.message : String(error) });
+      errors.push({
+        filePath: file,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
