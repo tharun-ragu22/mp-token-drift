@@ -28,6 +28,7 @@ When product teams move quickly from AI-generated prototypes to production codeb
 - 🛠️ **Production CLI & Reporters:** `scan` command with glob input, ignore patterns, and `console` / `pretty` / `json` / `sarif` output. Emits [SARIF v2.1.0](https://sarifweb.azurewebsites.net/) for GitHub code scanning, gates CI via `--fail-on-drift`, and auto-detects `CI` to strip ANSI colors.
 - ⚙️ **Config & Suppression:** Zero-config via an auto-discovered `drift.config.json`, plus `// drift-ignore` / `/* drift-disable */` inline suppression directives.
 - 🔧 **AST-Safe Auto-Fixer:** `--fix` rewrites drift in place via `magic-string`, preserving formatting and comments, with a `@babel/parser` re-parse safety gate and a `--dry-run` unified-diff preview.
+- ⚡ **Parallel Scanner:** Large scans fan out across a pool of Node worker threads (auto-selected by file count, or forced with `--parallel` / `--max-workers`), keeping token matching on the main thread for identical results at a fraction of the wall-clock time.
 - 🤖 **Composite GitHub Action:** A reusable `action.yml` maps its inputs onto the `scan` flags, uploads SARIF to code scanning, and derives its cache key from a SHA-256 digest of your config + token files.
 
 > 🚧 **Roadmap (not yet implemented):** a native MCP (Model Context Protocol) server for Cursor / agent workflows.
@@ -96,6 +97,26 @@ mp-token-drift scan [options] [patterns...]
 | `--enable-ai`         | Add LLM explanations to `console`/`pretty` reports          | off          |
 | `--llm-provider <p>`  | `anthropic`, `google`, `openai`, or `ollama`                | `anthropic`  |
 | `--llm-model <id>`    | Model id (falls back to the provider's default)             | per-provider |
+| `--parallel`          | Force scanning across worker threads                        | auto         |
+| `--sequential`        | Force single-threaded scanning on the main thread           | auto         |
+| `--max-workers <n>`   | Cap the worker-thread pool size                             | cores − 1    |
+
+### Parallel scanning
+
+Parsing is CPU-bound, so large scans fan out across a pool of worker threads (one AST parse per thread) while token matching stays on the main thread. By default the engine picks the strategy for you — it scans in-process for small runs and switches to the worker pool once the file set is large enough to outweigh the pool's start-up cost. Findings are **identical** either way; only the execution path differs.
+
+```bash
+# Let the engine choose (default)
+node dist/index.js scan "src/**/*.tsx"
+
+# Force parallel and cap the pool at 4 workers
+node dist/index.js scan "src/**/*.tsx" --parallel --max-workers 4
+
+# Force single-threaded (useful for profiling or tiny repos)
+node dist/index.js scan "src/**/*.tsx" --sequential
+```
+
+The pool defaults to one worker per core minus one (floor of 1). Because each worker pays a one-time cost to import the AST toolchain, parallel scanning wins on large codebases and multi-core machines; for a handful of files the in-process path is faster, which is why it's the automatic default below the threshold. Files that fail to parse are reported on stderr and skipped rather than aborting the run.
 
 ### Exit codes
 
