@@ -1,0 +1,88 @@
+name: 'mp-token-drift'
+description: 'Detect design-system token drift and report it to GitHub Code Scanning (SARIF).'
+author: 'tharun-ragu22'
+branding:
+  icon: 'droplet'
+  color: 'purple'
+
+# Inputs mirror the `mp-token-drift scan` flags. They are kept in lockstep with
+# ACTION_INPUT_NAMES in src/ci/actionFlags.ts (asserted by the test suite).
+inputs:
+  tokens:
+    description: 'Path to the design tokens file.'
+    required: false
+    default: ''
+  config:
+    description: 'Path to drift.config.json.'
+    required: false
+    default: 'drift.config.json'
+  patterns:
+    description: 'Whitespace-separated globs to scan. Empty uses the config include list.'
+    required: false
+    default: ''
+  format:
+    description: 'Report format (console|pretty|json|sarif). SARIF feeds code scanning.'
+    required: false
+    default: 'sarif'
+  output:
+    description: 'File the report is written to.'
+    required: false
+    default: 'code-scanning.sarif'
+  fail-on-drift:
+    description: 'Fail the job when drift exceeds max-drift.'
+    required: false
+    default: 'true'
+  max-drift:
+    description: 'Maximum allowed drift findings before the job fails.'
+    required: false
+    default: '0'
+  enable-ai:
+    description: 'Use the LLM reasoning agent to explain drift.'
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    # Cache keyed on the exact config + token schema, matching the digest that
+    # src/ci/cacheKey.ts computeCacheKey() produces for these same two files.
+    - name: Restore drift cache
+      uses: actions/cache@v4
+      with:
+        path: .mp-token-drift-cache
+        key: mp-token-drift-${{ hashFiles(inputs.config, inputs.tokens) }}
+
+    - name: Run mp-token-drift scan
+      shell: bash
+      env:
+        INPUT_TOKENS: ${{ inputs.tokens }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_PATTERNS: ${{ inputs.patterns }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
+        INPUT_MAX_DRIFT: ${{ inputs.max-drift }}
+        INPUT_ENABLE_AI: ${{ inputs.enable-ai }}
+      run: |
+        set -euo pipefail
+        # Assemble the argv the same way src/ci/actionFlags.ts buildScanArgs does:
+        # positional globs first, then only the flags whose inputs are set.
+        args=(scan)
+        if [ -n "$INPUT_PATTERNS" ]; then args+=($INPUT_PATTERNS); fi
+        if [ -n "$INPUT_TOKENS" ]; then args+=(--tokens "$INPUT_TOKENS"); fi
+        if [ -n "$INPUT_CONFIG" ]; then args+=(--config "$INPUT_CONFIG"); fi
+        if [ -n "$INPUT_FORMAT" ]; then args+=(--format "$INPUT_FORMAT"); fi
+        if [ -n "$INPUT_OUTPUT" ]; then args+=(--out "$INPUT_OUTPUT"); fi
+        if [ -n "$INPUT_MAX_DRIFT" ]; then args+=(--max-drift "$INPUT_MAX_DRIFT"); fi
+        if [ "$INPUT_FAIL_ON_DRIFT" = "true" ]; then args+=(--fail-on-drift); fi
+        if [ "$INPUT_ENABLE_AI" = "true" ]; then args+=(--enable-ai); fi
+        npx mp-token-drift "${args[@]}"
+
+    # Publish results even when the scan step fails the drift gate, so reviewers
+    # always see the annotations in the Security → Code scanning tab.
+    - name: Upload SARIF to GitHub Code Scanning
+      if: always() && inputs.format == 'sarif'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.output }}
+        category: mp-token-drift
