@@ -3,7 +3,7 @@ import { glob } from 'glob';
 import { loadConfig, type ResolvedConfig } from '../config/loadConfig.js';
 import { loadTokens } from '../matcher/schema.js';
 import { TokenMatcher } from '../matcher/tokenMatcher.js';
-import { scanFile, type Finding } from '../scanner/astScanner.js';
+import { scanEngine, shutdownScannerPools, type ScanError } from '../scanner/scanEngine.js';
 import { render } from '../reporter/index.js';
 import { writeReport } from '../reporter/fileWriter.js';
 import type { DriftItem } from '../reporter/types.js';
@@ -16,11 +16,22 @@ export interface ScanOutcome {
   exitCode: number;
 }
 
-/** Look up the closest design-system token to suggest for a finding. */
-function suggestToken(matcher: TokenMatcher, finding: Finding): string | null {
-  return finding.type === 'hardcoded-color'
-    ? matcher.matchColor(finding.value).matchedToken
-    : matcher.matchClass(finding.value).matchedToken;
+/**
+ * Translate the `--parallel` / `--sequential` flags into the engine's strategy
+ * hint. When neither is set the engine auto-selects by file count. If both are
+ * given, `--parallel` wins.
+ */
+function resolveStrategy(options: ScanCliOptions): boolean | undefined {
+  if (options.parallel) return true;
+  if (options.sequential) return false;
+  return undefined;
+}
+
+/** Summarize any files the scanner couldn't parse, for stderr. */
+function formatScanErrors(errors: ScanError[]): string {
+  if (errors.length === 0) return '';
+  const lines = errors.map((e) => `  ${e.filePath}: ${e.error}`);
+  return `Skipped ${errors.length} unparseable file(s):\n${lines.join('\n')}\n`;
 }
 
 function loadMatcher(tokensPath: string): TokenMatcher {
@@ -34,22 +45,6 @@ function loadMatcher(tokensPath: string): TokenMatcher {
 async function resolveFiles(config: ResolvedConfig): Promise<string[]> {
   const matches = await glob(config.include, { ignore: config.ignore, nodir: true });
   return matches.sort();
-}
-
-function collectDrift(files: string[], matcher: TokenMatcher): DriftItem[] {
-  const items: DriftItem[] = [];
-  for (const file of files) {
-    for (const finding of scanFile(file)) {
-      items.push({
-        file,
-        line: finding.line,
-        type: finding.type,
-        value: finding.value,
-        suggestion: suggestToken(matcher, finding),
-      });
-    }
-  }
-  return items;
 }
 
 /**
@@ -186,7 +181,22 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
 
   const matcher = loadMatcher(config.tokens);
   const files = await resolveFiles(config);
-  let items = collectDrift(files, matcher);
+
+  // Scan through the engine, which fans out to worker threads for large file
+  // sets (or when forced) and falls back to an in-process scan otherwise. Pools
+  // are torn down afterwards so the process can exit and tests don't hang.
+  let items: DriftItem[];
+  let scanWarning = '';
+  try {
+    const result = await scanEngine(files, config.tokens, {
+      parallel: resolveStrategy(options),
+      maxWorkers: options.maxWorkers,
+    });
+    items = result.items;
+    scanWarning = formatScanErrors(result.errors);
+  } finally {
+    await shutdownScannerPools();
+  }
 
   // The console formats surface explanations, and `--fix` uses the LLM's
   // recommended token; both need the AI round-trip. json/sarif reports without
@@ -202,7 +212,7 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
   // `--fix` rewrites the source instead of rendering a report.
   if (options.fix) {
     const outcome = await applyFixesToFiles(items, options.dryRun ?? false);
-    return { ...outcome, stderr: `${aiWarning}${outcome.stderr}` };
+    return { ...outcome, stderr: `${scanWarning}${aiWarning}${outcome.stderr}` };
   }
 
   const report = render(items, config.format);
@@ -210,7 +220,11 @@ export async function runScan(patterns: string[], options: ScanCliOptions): Prom
 
   if (config.out) {
     writeReport(config.out, report);
-    return { stdout: '', stderr: `${aiWarning}Report written to ${config.out}\n`, exitCode };
+    return {
+      stdout: '',
+      stderr: `${scanWarning}${aiWarning}Report written to ${config.out}\n`,
+      exitCode,
+    };
   }
-  return { stdout: report, stderr: aiWarning, exitCode };
+  return { stdout: report, stderr: `${scanWarning}${aiWarning}`, exitCode };
 }

@@ -18,6 +18,9 @@ export interface ScanCliOptions {
   llmModel?: string;
   fix?: boolean;
   dryRun?: boolean;
+  parallel?: boolean;
+  sequential?: boolean;
+  maxWorkers?: number;
 }
 
 export type ScanHandler = (patterns: string[], options: ScanCliOptions) => Promise<void>;
@@ -31,6 +34,14 @@ function parseMaxDrift(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed) || parsed < 0) {
     throw new InvalidArgumentError('must be a non-negative integer');
+  }
+  return parsed;
+}
+
+function parseMaxWorkers(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    throw new InvalidArgumentError('must be a positive integer');
   }
   return parsed;
 }
@@ -71,6 +82,9 @@ export function buildProgram(onScan: ScanHandler): Command {
     .option('--llm-model <model>', 'LLM model id (defaults to the provider default)')
     .option('--fix', 'rewrite drift in place, replacing values with design tokens')
     .option('--dry-run', 'with --fix, print the diff to stdout instead of writing files')
+    .option('--parallel', 'force parallel scanning across worker threads')
+    .option('--sequential', 'force single-threaded scanning on the main thread')
+    .option('--max-workers <n>', 'cap the worker-thread pool size', parseMaxWorkers)
     .action((patterns: string[], options: ScanCliOptions) => onScan(patterns, options));
 
   return program;
